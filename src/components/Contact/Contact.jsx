@@ -34,6 +34,8 @@ const Contact = forwardRef((props, ref) => {
   const yMove = useSpring(useTransform(mouseY, [-0.5, 0.5], ["-5%", "5%"]), springConfig);
   const xTitle = useSpring(useTransform(mouseX, [-0.5, 0.5], ["5%", "-5%"]), springConfig);
 
+  const currentYear = new Date().getFullYear();
+
   return (
     <div ref={containerRef} className="contact-wrapper" data-header-theme="dark">
 
@@ -54,8 +56,7 @@ const Contact = forwardRef((props, ref) => {
                 animate={{ x: "-50%" }}
                 transition={{ repeat: Infinity, duration: 60, ease: "linear" }}
               >
-                YOUNG FAMILY LABEL — WORLDWIDE — 2025 — MULTI —
-                YOUNG FAMILY LABEL — WORLDWIDE — 2025 — MULTI —
+                {`YOUNG FAMILY LABEL — WORLDWIDE — ${currentYear} — MULTI — YOUNG FAMILY LABEL — WORLDWIDE — ${currentYear} — MULTI —`}
               </motion.div>
             </div>
 
@@ -99,9 +100,9 @@ const Contact = forwardRef((props, ref) => {
               </div>
 
               <div className="multi-visual-container">
-                <motion.h1 className="giant-bg-text" style={{ x: xTitle }}>
+                <motion.div className="giant-bg-text" style={{ x: xTitle }} aria-hidden="true">
                   CEO
-                </motion.h1>
+                </motion.div>
 
                 <motion.img
                   src={multiImg}
@@ -113,7 +114,7 @@ const Contact = forwardRef((props, ref) => {
             </div>
 
             <footer className="main-footer">
-              <span>© 2025 YFL. ALL RIGHTS RESERVED.</span>
+              <span>© {currentYear} YFL. ALL RIGHTS RESERVED.</span>
               <a href="https://itomdev.com" target="_blank" rel="noopener noreferrer" className="creator-link">
                 DESIGN & CODE: TOMASZ SZMAJDA (ITOM) • UNIWERSYTET OPOLSKI ↗
               </a>
@@ -136,26 +137,35 @@ const ChangingNumbers = () => (
 const CopyLink = ({ email }) => {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(email.toLowerCase());
-    setCopied(true);
-
-    setTimeout(() => {
-      setCopied(false);
-    }, 2000);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(email.toLowerCase());
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch {
+      window.location.href = `mailto:${email.toLowerCase()}`;
+    }
   };
 
   return (
-    <div className="contact-link" onClick={handleCopy} style={{ cursor: 'pointer' }}>
+    <button
+      type="button"
+      className="contact-link"
+      onClick={handleCopy}
+      aria-label={`Skopiuj adres e-mail ${email}`}
+      style={{ cursor: 'pointer' }}
+    >
       {copied ? (
         <span className="link-text" style={{ color: '#ff0000' }}>SKOPIOWANO!</span>
       ) : (
         <>
           <span className="link-text">{email}</span>
-          <span className="link-arrow">↗</span>
+          <span className="link-arrow" aria-hidden="true">↗</span>
         </>
       )}
-    </div>
+    </button>
   );
 };
 

@@ -158,6 +158,9 @@
 .video-container {
   grid-area: stack;
   z-index: 10;
+  display: block;
+  text-decoration: none;
+  color: inherit;
 
   /* ZMIANA: Zamiast 55vw dajemy max-width */
   width: 36.46vw;

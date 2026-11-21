@@ -165,7 +165,7 @@ function About({ externalOpacity }) {
       <section className="about-section mobile-view" style={{ opacity: externalOpacity }}>
         {/* Góra: Tytuł */}
         <div className="mobile-title-container">
-          <h1 className="about-title mobile">O MNIE</h1>
+          <h2 className="about-title mobile">O MNIE</h2>
         </div>
 
         {/* Środek: Carousel z faktami */}
@@ -208,7 +208,7 @@ function About({ externalOpacity }) {
       {/* 1. WARSTWA TŁA: TYTUŁ "O MNIE" */}
       {/* Przeniesiony na początek, żeby był "za" głową */}
       <div className="about-content">
-        <h1 className="about-title">O MNIE</h1>
+        <h2 className="about-title">O MNIE</h2>
       </div>
 
       {/* 2. WARSTWA ŚRODKOWA: GŁOWA I DREDY */}

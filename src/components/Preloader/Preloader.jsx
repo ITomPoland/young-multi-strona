@@ -1,29 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import './Preloader.css';
-import logoWhite from '../../assets/logoyflbiale.avif'; // Import logo
+import logoWhite from '../../assets/logoyflbiale.avif';
 import { usePerformance } from '../../context/PerformanceContext';
 import useFpsMonitor from '../../hooks/useFpsMonitor';
-
-// System checks logic (simplified for cleaner component)
-const useSystemChecks = () => {
-  const [issues, setIssues] = useState([]);
-
-  useEffect(() => {
-    const checkGPU = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl', { failIfMajorPerformanceCaveat: true });
-        return !!gl;
-      } catch { return false; }
-    };
-
-    const hasGPU = checkGPU();
-    if (!hasGPU) setIssues(prev => [...prev, { type: 'gpu', title: 'No GPU Detected' }]);
-  }, []);
-
-  return issues;
-};
 
 // MINIMALIST LUXURY VARIANT
 const containerVariants = {
@@ -45,96 +25,82 @@ const blindVariants = {
   }
 };
 
-// Logo moves up WITH the middle blind (index 2 = 0.2s delay)
+// Logo moves up WITH the middle blind
 const logoExitVariant = {
   initial: { y: 0, opacity: 1 },
   animate: { y: 0, opacity: 1 },
   exit: {
-    y: "-120vh", // Move completely off screen upwards
-    opacity: 1, // DO NOT FADE OUT
+    y: "-120vh",
+    opacity: 1,
     transition: {
       duration: 0.9,
-      delay: 0.1 + 0.2, // container delay (0.2) + blind index 2 delay (0.2) -> actually container delay applies to children start? 
-      // Wait, staggerChildren applies to direct children. 
-      // The Blinds are direct children. The Content is a direct child?
-      // Let's manually sync.
+      delay: 0.3,
       ease: [0.76, 0, 0.24, 1]
     }
   }
 };
 
 function Preloader({ onComplete }) {
-  const [isReady, setIsReady] = useState(false);
   const [progress, setProgress] = useState(0);
-  const issues = useSystemChecks();
 
   // FPS Monitoring
   const { setFps } = usePerformance();
   const { startMonitoring, stopMonitoring } = useFpsMonitor();
 
   useEffect(() => {
+    let isCancelled = false;
+    let progressInterval;
+
     const runSequence = async () => {
-      // 1. Initial State
       window.scrollTo(0, 0);
       document.body.style.overflow = 'hidden';
       document.documentElement.style.overflow = 'hidden';
 
-      // === PRELOAD MENU IMAGE ===
+      // Preload menu image in background
       const preloadMenuImage = new Image();
       preloadMenuImage.src = '/menu-image.avif';
 
-      // Start Progress Tween (0 -> 100% over ~4.5 seconds)
-      const duration = 4500;
+      // Fast, crisp progress tween (~1.1s instead of 4.5s)
+      const duration = 1100;
       const start = Date.now();
 
-      const progressInterval = setInterval(() => {
-        const now = Date.now();
-        const elapsed = now - start;
-        const p = Math.min((elapsed / duration) * 100, 100);
-        setProgress(p);
-
-        if (p >= 100) clearInterval(progressInterval);
-      }, 50);
-
-      // 2. Wait for fonts & minimal initial load (1s)
-      await document.fonts.ready;
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // 3. WARM-UP SCROLL (Unlock scrollbar so user sees movement)
-      document.body.style.overflow = 'auto';
-      document.documentElement.style.overflow = 'auto'; // Ensure scrollbar is visible
-
-      // START MONITORING
       startMonitoring();
 
-      // Scroll Down (~2s)
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      progressInterval = setInterval(() => {
+        if (isCancelled) return;
+        const elapsed = Date.now() - start;
+        const p = Math.min((elapsed / duration) * 100, 100);
+        setProgress(p);
+        if (p >= 100) clearInterval(progressInterval);
+      }, 30);
 
-      // Scroll Up (~1.5s)
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Wait for fonts and minimum visual duration in parallel
+      await Promise.all([
+        document.fonts.ready,
+        new Promise((resolve) => setTimeout(resolve, duration))
+      ]);
 
-      // STOP MONITORING & REGISTER FPS
+      if (isCancelled) return;
+
       const avgFps = stopMonitoring();
       setFps(avgFps);
 
-      // 4. Final Sync
       clearInterval(progressInterval);
       setProgress(100);
 
-      // Ensure we are strictly at top before revealing
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
       window.scrollTo(0, 0);
 
-      // Proceed to Exit
-      setIsReady(true);
       if (onComplete) onComplete();
     };
 
     runSequence();
 
-    // Cleanup - Ensure scroll is restored
     return () => {
+      isCancelled = true;
+      if (progressInterval) clearInterval(progressInterval);
+      stopMonitoring();
       document.body.style.overflow = '';
       document.documentElement.style.overflow = '';
     };
@@ -162,18 +128,14 @@ function Preloader({ onComplete }) {
       <motion.div
         className="preloader-content"
         variants={logoExitVariant}
-        /* Using specific variant to sync with blinds */
         initial="initial"
         animate="animate"
         exit="exit"
       >
         <div className="minimal-logo-wrapper">
-          {/* Base Dim Logo */}
-          <img src={logoWhite} className="logo-base" alt="logo" />
-
-          {/* Filled Logo (Opacity Clip based on progress) */}
+          <img src={logoWhite} className="logo-base" alt="YFL Logo" />
           <div className="logo-fill-container" style={{ height: `${progress}%` }}>
-            <img src={logoWhite} className="logo-filled" alt="logo" />
+            <img src={logoWhite} className="logo-filled" alt="" aria-hidden="true" />
           </div>
         </div>
 

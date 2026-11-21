@@ -10,6 +10,7 @@ import Header from './components/Header/Header';
 import MenuOverlay from './components/MenuOverlay/MenuOverlay';
 import CustomCursor from './components/CustomCursor/CustomCursor';
 import SmoothScroll from './components/SmoothScroll/SmoothScroll';
+import FanBanner from './components/FanBanner/FanBanner';
 // import NoiseOverlay from './components/NoiseOverlay/NoiseOverlay'; // DISABLED
 import useAdaptiveFavicon from './hooks/useAdaptiveFavicon';
 import head1Img from './assets/head1.avif'; // Explicit import for preload
@@ -23,28 +24,26 @@ const NotFound = lazy(() => import('./components/NotFound/NotFound'));
 import { PerformanceProvider } from './context/PerformanceContext';
 
 function App() {
+  const path = window.location.pathname;
+  const isHome = path === '/' || path === '/index.html';
+
   return (
     <PerformanceProvider>
-      <AppContent />
+      {isHome ? (
+        <HomePage />
+      ) : (
+        <Suspense fallback={null}>
+          <NotFound />
+        </Suspense>
+      )}
+      <FanBanner />
     </PerformanceProvider>
   );
 }
 
-function AppContent() {
+function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  // Simple Routing Check
-  const path = window.location.pathname;
-  const isHome = path === '/' || path === '/index.html';
-
-  if (!isHome) {
-    return (
-      <Suspense fallback={null}>
-        <NotFound />
-      </Suspense>
-    );
-  }
 
   const { scrollY } = useScroll();
 
@@ -57,8 +56,8 @@ function AppContent() {
   const merchRef = useRef(null);
   const contactRef = useRef(null);
 
-  const openMenu = () => setIsMenuOpen(true);
-  const closeMenu = () => setIsMenuOpen(false);
+  const openMenu = useCallback(() => setIsMenuOpen(true), []);
+  const closeMenu = useCallback(() => setIsMenuOpen(false), []);
 
   // === DYNAMIC SCROLL NAVIGATION ===
   // Uses actual DOM positions and calculates offsets for nested sections
@@ -88,7 +87,7 @@ function AppContent() {
         case 'nowa-piosenka':
           scrollPosition = newSongTop;
           break;
-        case 'dyskolgrafia':
+        case 'dyskografia':
           scrollPosition = newSongTop + (newSongHeight * 0.35);
           break;
         case 'o-mnie':
@@ -117,7 +116,6 @@ function AppContent() {
     import('./components/NewSong/NewSong');
     import('./components/Merch/Merch');
     import('./components/Contact/Contact');
-    import('./components/NotFound/NotFound');
 
     // 2. Heavy Assets Preload
     const preloadImage = (src) => {
@@ -128,17 +126,25 @@ function AppContent() {
     // Preload About Head
     preloadImage(head1Img);
 
-    // Explicitly fetching the video to force buffer
-    const video = document.createElement('video');
-    video.src = '/smoke-transition.mp4';
-    video.preload = 'auto';
-    video.load();
+    // Defer heavy video preload and skip on mobile (where SmokeTransition uses a CSS curtain)
+    let videoTimer;
+    if (window.innerWidth >= 768) {
+      videoTimer = setTimeout(() => {
+        const video = document.createElement('video');
+        video.src = '/smoke-transition.mp4';
+        video.preload = 'metadata';
+        video.load();
+      }, 2000);
+    }
 
+    return () => {
+      if (videoTimer) clearTimeout(videoTimer);
+    };
   }, []);
 
-  const handlePreloaderComplete = () => {
+  const handlePreloaderComplete = useCallback(() => {
     setIsLoading(false);
-  };
+  }, []);
 
   return (
     <>
@@ -165,7 +171,9 @@ function AppContent() {
         />
 
         <AnimatePresence mode='wait'>
-          {isMenuOpen && <MenuOverlay onSectionClick={handleSectionClick} />}
+          {isMenuOpen && (
+            <MenuOverlay onSectionClick={handleSectionClick} onClose={closeMenu} />
+          )}
         </AnimatePresence>
 
         <main>

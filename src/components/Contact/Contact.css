@@ -105,6 +105,10 @@
     gap: 20px;
     /* Odstęp strzałki od tekstu */
 
+    background: transparent;
+    border: none;
+    text-align: left;
+
     font-family: 'Bernoru', sans-serif;
     /* Zmniejszamy font: min 2rem, max 4rem (było 5rem) */
     font-size: clamp(2rem, 3.5vw, 4rem);
@@ -251,7 +255,7 @@
 
 .main-footer {
     position: absolute;
-    bottom: 20px;
+    bottom: 52px;
     width: 100%;
     display: flex;
     justify-content: flex-start;
@@ -366,6 +370,7 @@
     }
 
     .main-footer {
+        bottom: 64px;
         font-size: 0.7rem;
         padding: 0 3vw;
     }

@@ -148,20 +148,6 @@ const NewSong = forwardRef((props, ref) => {
   const smokeZIndex = useTransform(contentProgress, [0, 0.8, 0.81, 1], [0, 0, 100, 100]);
   const smokeOpacity = useTransform(contentProgress, [0.7, 0.8], [0, 1]);
 
-  // === PRELOAD ABOUT IMAGE WHEN IN GRAMOPHONE SECTION ===
-  const [aboutImagePreloaded, setAboutImagePreloaded] = useState(false);
-  useMotionValueEvent(contentProgress, "change", (latest) => {
-    // Preload About head image when user reaches ~40% (middle of Gramophone)
-    if (latest > 0.35 && !aboutImagePreloaded) {
-      const preloadImg = new Image();
-      preloadImg.src = '/assets/head1-B-vNzeSa.avif'; // Largest srcset variant
-      // Also preload the srcset variants
-      import('../../assets/head1.avif?w=800&format=avif').then(() => {
-        setAboutImagePreloaded(true);
-      });
-    }
-  });
-
   return (
     <motion.section
       id="nowa-piosenka"
@@ -199,15 +185,18 @@ const NewSong = forwardRef((props, ref) => {
               className="newsong-text-wrapper"
               style={{ y: textY, willChange: 'transform' }}
             >
-              <h1 className="newsong-title">GDZIE MOJ DOM</h1>
-              <h2 className="newsong-subtitle">OUT NOW • STREAMING EVERYWHERE</h2>
+              <h2 className="newsong-title">GDZIE MOJ DOM</h2>
+              <p className="newsong-subtitle">OUT NOW • STREAMING EVERYWHERE</p>
             </motion.div>
 
             {/* WIDEO */}
-            <motion.div
+            <motion.a
               className="video-container"
               style={{ y: videoY, x: videoX, scale: videoScale, willChange: 'transform' }}
-              onClick={() => window.open('https://www.youtube.com/watch?v=A0I1MrojmJE&list=RDA0I1MrojmJE&start_radio=1', '_blank')}
+              href="https://www.youtube.com/watch?v=A0I1MrojmJE"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Obejrzyj teledysk Gdzie Mój Dom na YouTube"
             >
               <div className="tech-corner tl"></div>
               <div className="tech-corner br"></div>
@@ -217,7 +206,7 @@ const NewSong = forwardRef((props, ref) => {
                 <img
                   src="https://img.youtube.com/vi/A0I1MrojmJE/maxresdefault.jpg"
                   className="video-thumb-img"
-                  alt="Thumbnail"
+                  alt="Miniatura teledysku Gdzie Mój Dom — Young Multi"
                   loading="lazy"
                   width="1280"
                   height="720"
@@ -227,7 +216,7 @@ const NewSong = forwardRef((props, ref) => {
                   <div className="play-icon"></div>
                 </div>
               </div>
-            </motion.div>
+            </motion.a>
 
             {/* LINKI */}
             <motion.div
@@ -257,7 +246,7 @@ const NewSong = forwardRef((props, ref) => {
               />
               <InteractiveLink
                 name="TIDAL"
-                url="http://www.tidal.com/album/463841952"
+                url="https://tidal.com/album/463841952"
                 baseColor="#00FFFF"
                 onHoverStart={() => handleSpotlightHover('rgba(0, 255, 255, 0.3)')}
                 onHoverEnd={handleSpotlightLeave}

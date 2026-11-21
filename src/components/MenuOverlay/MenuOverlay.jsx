@@ -1,11 +1,21 @@
 // Plik: /src/components/MenuOverlay/MenuOverlay.jsx
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import './MenuOverlay.css';
 import PixelCard from '../PixelCard/PixelCard';
 
-function MenuOverlay({ onSectionClick }) {
+function MenuOverlay({ onSectionClick, onClose }) {
+
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape' && onClose) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [onClose]);
 
   // Funkcja teraz jest prosta: przekaż kliknięcie wyżej
   const handleLinkClick = (sectionId) => {
@@ -86,7 +96,7 @@ function MenuOverlay({ onSectionClick }) {
             {[
               { id: 'home', label: 'HOME' },
               { id: 'nowa-piosenka', label: 'NOWA PIOSENKA' },
-              { id: 'dyskolgrafia', label: 'DYSKOGRAFIA' },
+              { id: 'dyskografia', label: 'DYSKOGRAFIA' },
               { id: 'o-mnie', label: 'O MNIE' },
               { id: 'merch', label: 'MERCH' },
               { id: 'kontakt', label: 'KONTAKT' }

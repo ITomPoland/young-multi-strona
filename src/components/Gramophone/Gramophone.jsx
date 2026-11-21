@@ -131,9 +131,9 @@ function Gramophone({ contentProgress, isMenuOpen, style, zoomTargetRef }) {
           willChange: 'transform' // Ensure 3D transforms are GPU accelerated
         }}
       >
-        <h1 className="gramophone-title-static">
+        <h2 className="gramophone-title-static">
           DYSKOGRAFIA
-        </h1>
+        </h2>
 
         <ScrollStack
           className="gramophone-scroller"
