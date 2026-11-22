@@ -35,11 +35,24 @@ function Header({ onMenuClick, isMenuOpen, onCloseClick, startAnimation = false 
         style={{ cursor: 'pointer' }}
       />
 
-      <div className="header-menu-icon-wrapper">
-        <HamburgerMenuIcon
-          isOpen={isMenuOpen}
-          onClick={isMenuOpen ? onCloseClick : onMenuClick}
-        />
+      <div className="header-actions">
+        <a
+          href="https://sklep.yfl.pl"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="header-shop-link"
+          aria-label="Oficjalny sklep YFL"
+        >
+          <span>SHOP</span>
+          <span className="header-shop-arrow" aria-hidden="true">↗</span>
+        </a>
+
+        <div className="header-menu-icon-wrapper">
+          <HamburgerMenuIcon
+            isOpen={isMenuOpen}
+            onClick={isMenuOpen ? onCloseClick : onMenuClick}
+          />
+        </div>
       </div>
     </motion.nav>
   );

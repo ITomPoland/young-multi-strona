@@ -1,10 +1,10 @@
 /* Plik: /src/components/NewSong/NewSong.css */
 
 .newsong-section {
-  height: 1250vh;
+  height: 1350vh;
   margin-top: -100vh;
   position: relative;
-  color: #ffffff;
+  color: #e4eef2;
   z-index: 2;
   pointer-events: none;
 }
@@ -17,23 +17,13 @@
   overflow: hidden;
 }
 
-.newsong-reveal-clip {
+.newsong-stage-handoff {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  clip-path: inset(100% 0% 0% 0%);
-  will-change: clip-path;
-}
-
-.hero-webgl-frontier {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 30;
-  pointer-events: none;
-  display: block;
+  opacity: 0;
+  will-change: opacity;
 }
 
 .newsong-gramophone-layer {
@@ -58,7 +48,9 @@
 }
 
 /* ============================================
-   PANEL 1: FULL-BLEED BRUTALIST EDITORIAL POSTER
+   PANEL 1: FLOATING 3D SPATIAL WORLD (ZA KAŻDYM RA2EM)
+   Zero neon frames, zero forced boxes — pure depth & floating editorial composition
+   inside the exact same 3D tiled room as Hero.
    ============================================ */
 .newsong-panel {
   position: absolute;
@@ -67,108 +59,113 @@
   height: 100vh;
   z-index: 2;
   overflow: hidden;
-  background-color: #060606;
-  display: grid;
-  place-items: center;
+  background-color: transparent;
+  perspective: 1400px;
 }
 
-/* Full-bleed cinema artwork backdrop */
-.poster-bg-layer {
-  position: absolute;
-  inset: -4%;
-  width: 108%;
-  height: 108%;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.poster-bg-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center 25%;
-  filter: grayscale(35%) saturate(0.85) blur(10px);
-}
-
-.poster-vignette {
+/* Soft localized mist ONLY behind right editorial typography so bright Hero tiled room stays 100% vivid */
+.spatial-readability-mist {
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 70% 60% at 50% 45%, rgba(6, 6, 6, 0.22) 0%, rgba(6, 6, 6, 0.88) 100%),
-    linear-gradient(180deg, rgba(6, 6, 6, 0.78) 0%, rgba(6, 6, 6, 0.18) 38%, rgba(6, 6, 6, 0.35) 70%, rgba(6, 6, 6, 0.96) 100%);
+    radial-gradient(ellipse 38% 58% at 78% 50%, rgba(5, 11, 14, 0.56) 0%, rgba(5, 11, 14, 0) 100%),
+    linear-gradient(180deg, rgba(5, 11, 14, 0.24) 0%, transparent 24%, transparent 78%, rgba(5, 11, 14, 0.44) 100%);
 }
 
-/* Reactive ambient color wash when hovering a streaming platform */
-.poster-accent-wash {
+/* Live 3D Ambient Dust Canvas continuing Multi's dust inside the room */
+.ambient-dust-canvas {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
   pointer-events: none;
-  background: radial-gradient(circle at 50% 88%,
-      color-mix(in srgb, var(--release-accent, #ff2a2a) 22%, transparent) 0%,
-      transparent 60%);
-  opacity: 0.7;
-  transition: background 0.45s ease;
+  display: block;
 }
 
-.noise-overlay {
+/* ============================================
+   FLOATING 3D MONUMENTAL TYPOGRAPHY (2 DEPTH PLANES)
+   Plane 1 (ZA KAŻDYM): Deep behind the floating monolith
+   Plane 2 (RA2EM): Ghostly translucent stroke floating IN FRONT of monolith's lower edge
+   ============================================ */
+.spatial-type-back {
   position: absolute;
-  inset: 0;
-  z-index: 2;
-  opacity: 0.055;
-  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAGFBMVEUAAAA5OTkAAABMTExERERmZmYzMzMyMjJl7m+WAAAAAXRSTlMAQObYZgAAAAFiS0dEAIgFHUgAAAAJcEhZcwAACxMAAAsTAQCanBgAAAAHdElNRQfmCwYODiI3sC8AAAAAB3RJTUUH5gsGDg4iN7AvAAAAAHjaY2AYBaNgFIyCUTAKRsEoGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBaNgFIyCUTAKRsEoGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBagAAKF/AQE+sPc+AAAAAElFTkSuQmCC");
-  pointer-events: none;
-}
-
-/* Massive Edge-to-Edge Kinetic Typography */
-.poster-type-stage {
-  position: absolute;
-  inset: 0;
+  top: clamp(4.2rem, 11vh, 8.5rem);
+  left: clamp(1.5rem, 5vw, 5.5rem);
   z-index: 3;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: clamp(4.5rem, 9vh, 7.5rem) clamp(1.5rem, 4vw, 4.5rem) clamp(7.2rem, 14vh, 10.5rem);
-  box-sizing: border-box;
-  pointer-events: none;
-  user-select: none;
-}
-
-.poster-type-row {
   font-family: 'Antonio', sans-serif;
   font-weight: 700;
-  font-size: clamp(3.8rem, 11.5vw, 13rem);
-  line-height: 0.86;
-  letter-spacing: -0.025em;
+  font-size: clamp(4.8rem, 13.8vw, 15.5rem);
+  line-height: 0.82;
+  letter-spacing: -0.03em;
   text-transform: uppercase;
   white-space: nowrap;
+  color: rgba(212, 232, 238, 0.88);
+  text-shadow: 0 24px 70px rgba(4, 8, 10, 0.72);
+  pointer-events: none;
+  user-select: none;
+  will-change: transform, opacity;
 }
 
-.poster-type-row span {
+.spatial-type-back span,
+.spatial-type-front span {
   display: inline-block;
   will-change: transform;
 }
 
-.poster-type-top {
-  align-self: flex-start;
-  color: rgba(255, 255, 255, 0.94);
-  mix-blend-mode: exclusion;
+.spatial-type-front {
+  position: absolute;
+  bottom: clamp(4.5rem, 10vh, 8rem);
+  left: clamp(22%, 28vw, 35%);
+  z-index: 6;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(4.8rem, 14.5vw, 16rem);
+  line-height: 0.80;
+  letter-spacing: -0.025em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: rgba(214, 234, 240, 0.06);
+  -webkit-text-stroke: 1.5px rgba(176, 214, 224, 0.62);
+  pointer-events: none;
+  user-select: none;
+  will-change: transform, opacity;
 }
 
-.poster-type-bottom {
-  align-self: flex-end;
-  color: transparent;
-  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.82);
-}
-
-/* Raw Sharp-Edged Center Cinema Viewport */
-.poster-video-anchor {
-  position: relative;
+/* ============================================
+   BORDERLESS FLOATING FILM MONOLITH
+   Asymmetric editorial anchor (exact pixel match with HeroVideoShader computeTargetFrameRect!)
+   ============================================ */
+.poster-monolith-slot {
+  position: absolute;
+  left: 36%;
+  top: 49%;
+  transform: translate(-50%, -50%);
+  width: min(50vw, 760px);
   z-index: 5;
-  width: min(44vw, 660px);
-  margin-bottom: 3.5vh;
+}
+
+@keyframes monolith-levitate {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+.poster-monolith-float {
+  position: relative;
+  width: 100%;
+  transform-style: preserve-3d;
+}
+
+.poster-monolith-levitate {
+  width: 100%;
+  transform-style: preserve-3d;
+  animation: monolith-levitate 7.5s ease-in-out infinite;
 }
 
 .poster-video-frame {
@@ -177,85 +174,109 @@
   width: 100%;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: #080808;
+  border: 1px solid rgba(180, 216, 226, 0.12);
+  background: #070b0d;
   text-decoration: none;
-  color: #ffffff;
-  box-shadow: 0 38px 90px rgba(0, 0, 0, 0.85);
-  transition: border-color 0.35s ease, box-shadow 0.35s ease;
+  color: #e4eef2;
+  box-shadow:
+    0 52px 130px rgba(0, 0, 0, 0.88),
+    0 18px 48px rgba(0, 0, 0, 0.65);
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
   transform-style: preserve-3d;
 }
 
 .poster-video-frame:hover {
-  border-color: #ffffff;
-  box-shadow: 0 42px 110px rgba(0, 0, 0, 0.95);
+  border-color: rgba(210, 234, 240, 0.34);
+  box-shadow:
+    0 60px 150px rgba(0, 0, 0, 0.94),
+    0 0 65px rgba(72, 138, 156, 0.16);
 }
 
+.poster-video-canvas,
 .poster-video-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
   display: block;
-  transition: transform 0.75s cubic-bezier(0.22, 1, 0.36, 1), filter 0.45s ease;
-}
-
-.poster-video-frame:hover .poster-video-img {
-  transform: scale(1.06);
-  filter: contrast(1.08) brightness(0.88);
+  object-fit: cover;
 }
 
 .poster-video-scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, transparent 45%, rgba(0, 0, 0, 0.78) 100%);
+  background: linear-gradient(180deg, rgba(6, 9, 11, 0.08) 0%, transparent 45%, rgba(6, 9, 11, 0.48) 100%);
   pointer-events: none;
 }
 
-.poster-video-cta {
+/* Minimalist floating ghost cue directly beneath monolith — zero chunky boxes, positioned outside flow so 16:9 monolith stays 100% pixel-locked to Hero */
+.monolith-play-cue {
   position: absolute;
-  right: 0;
-  bottom: 0;
+  top: calc(100% + 1.05rem);
+  left: 0;
   display: inline-flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 1.35rem;
-  background: #ffffff;
-  color: #060606;
+  color: rgba(216, 234, 240, 0.84);
+  text-decoration: none;
   font-family: 'Antonio', sans-serif;
   font-weight: 700;
-  font-size: clamp(0.9rem, 1.05vw, 1.15rem);
-  letter-spacing: 0.12em;
+  font-size: clamp(0.88rem, 1.05vw, 1.12rem);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  transition: background-color 0.25s ease, color 0.25s ease, padding-right 0.25s ease;
+  white-space: nowrap;
+  transition: color 0.25s ease, gap 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.poster-video-frame:hover .poster-video-cta {
-  background: #ff2a2a;
+.monolith-play-line {
+  display: inline-block;
+  width: 28px;
+  height: 1px;
+  background: rgba(176, 214, 224, 0.65);
+  transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.25s ease;
+}
+
+.monolith-play-cue:hover {
   color: #ffffff;
-  padding-right: 1.65rem;
+  gap: 1rem;
 }
 
-.poster-video-cta-arrow {
-  transition: transform 0.25s ease;
+.monolith-play-cue:hover .monolith-play-line {
+  width: 48px;
+  background: #d8eef4;
 }
 
-.poster-video-frame:hover .poster-video-cta-arrow {
+.monolith-play-arrow {
+  font-size: 1.05em;
+  opacity: 0.75;
+  transition: transform 0.28s ease, opacity 0.25s ease;
+}
+
+.monolith-play-cue:hover .monolith-play-arrow {
+  opacity: 1;
   transform: translate(3px, -3px);
 }
 
-/* Editorial Bottom Rail (Pure Typography above FanBanner) */
-.poster-bottom-rail {
+/* ============================================
+   FLOATING SPATIAL EDITORIAL INDEX
+   Suspended freely in foreground 3D space on the open right side of the tiled room
+   ============================================ */
+.spatial-editorial-slot {
   position: absolute;
-  left: clamp(1.5rem, 4vw, 4.5rem);
-  right: clamp(1.5rem, 4vw, 4.5rem);
-  bottom: 52px;
-  z-index: 6;
+  left: clamp(64%, 65vw, 68%);
+  right: clamp(1.5rem, 4vw, 4rem);
+  top: 49%;
+  transform: translateY(-50%);
+  z-index: 7;
+  max-width: 340px;
+}
+
+.spatial-editorial-index {
+  will-change: transform, opacity;
+}
+
+.spatial-index-inner {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1.5rem 2.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  flex-direction: column;
+  gap: 1.55rem;
 }
 
 .poster-sr-heading {
@@ -270,80 +291,106 @@
   border: 0;
 }
 
-.poster-meta-block {
+.spatial-meta-group {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.32rem;
 }
 
-.poster-meta-primary {
-  font-family: 'Antonio', sans-serif;
-  font-weight: 700;
-  font-size: clamp(1.05rem, 1.4vw, 1.45rem);
-  letter-spacing: 0.08em;
-  color: #ffffff;
-}
-
-.poster-meta-sub {
+.spatial-kicker {
   font-family: 'Courier New', monospace;
-  font-size: clamp(0.64rem, 0.75vw, 0.76rem);
-  letter-spacing: 0.16em;
-  color: rgba(255, 255, 255, 0.56);
+  font-size: clamp(0.68rem, 0.78vw, 0.8rem);
+  letter-spacing: 0.22em;
+  color: rgba(196, 228, 238, 0.92);
+  text-shadow: 0 2px 14px rgba(4, 10, 14, 0.85);
   text-transform: uppercase;
 }
 
-.poster-stream-nav {
-  display: flex;
-  align-items: center;
-  gap: clamp(1rem, 2.4vw, 2.6rem);
-  flex-wrap: wrap;
+.spatial-artist {
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.38rem, 1.95vw, 2.1rem);
+  letter-spacing: 0.06em;
+  line-height: 1.05;
+  color: #f2f8fa;
+  text-shadow: 0 4px 24px rgba(4, 10, 14, 0.85);
+  margin-top: 0.15rem;
 }
 
-.poster-stream-link {
+.spatial-credits {
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.68rem, 0.78vw, 0.8rem);
+  letter-spacing: 0.15em;
+  color: rgba(218, 236, 242, 0.88);
+  text-shadow: 0 2px 14px rgba(4, 10, 14, 0.85);
+  text-transform: uppercase;
+  line-height: 1.45;
+}
+
+.spatial-credits-muted {
+  color: rgba(186, 218, 228, 0.74);
+}
+
+.spatial-hairline {
+  width: 44px;
+  height: 1px;
+  background: rgba(196, 230, 240, 0.55);
+}
+
+.spatial-stream-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.spatial-stream-link {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.65rem;
   font-family: 'Antonio', sans-serif;
   font-weight: 700;
-  font-size: clamp(1rem, 1.35vw, 1.4rem);
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.82);
+  font-size: clamp(1.12rem, 1.48vw, 1.56rem);
+  letter-spacing: 0.1em;
+  color: rgba(232, 244, 248, 0.92);
+  text-shadow: 0 2px 18px rgba(4, 10, 14, 0.85);
   text-decoration: none;
-  padding-bottom: 0.2rem;
-  transition: color 0.2s ease;
+  padding: 0.12rem 0;
+  transition: color 0.25s ease, transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.poster-stream-link::after {
+.spatial-stream-link::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 2px;
-  background: var(--link-accent, #ffffff);
+  height: 1px;
+  background: rgba(176, 218, 228, 0.85);
   transform: scaleX(0);
   transform-origin: left;
-  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.poster-stream-link:hover {
+.spatial-stream-link:hover {
   color: #ffffff;
+  transform: translateX(8px);
 }
 
-.poster-stream-link:hover::after {
+.spatial-stream-link:hover::after {
   transform: scaleX(1);
 }
 
-.poster-stream-arrow {
-  font-size: 0.9em;
-  opacity: 0.55;
-  transition: transform 0.25s ease, opacity 0.25s ease, color 0.25s ease;
+.spatial-stream-arrow {
+  font-size: 0.88em;
+  opacity: 0.45;
+  transition: transform 0.28s ease, opacity 0.25s ease, color 0.25s ease;
 }
 
-.poster-stream-link:hover .poster-stream-arrow {
+.spatial-stream-link:hover .spatial-stream-arrow {
   opacity: 1;
-  color: var(--link-accent, #ffffff);
+  color: #b4dce6;
   transform: translate(3px, -3px);
 }
 
@@ -356,66 +403,125 @@
   z-index: 10;
 }
 
-/* --- RESPONSIVE DESIGN --- */
+/* ============================================
+   RESPONSIVE DESIGN (exact pixel parity with HeroVideoShader computeTargetFrameRect)
+   ============================================ */
 @media (max-width: 1024px) {
-  .poster-video-anchor {
-    width: min(74vw, 640px);
+  .poster-monolith-slot {
+    left: 50%;
+    top: 42%;
+    width: min(72vw, 620px);
   }
 
-  .poster-bottom-rail {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.85rem;
+  .spatial-type-back {
+    top: 5.2rem;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: clamp(4.2rem, 15vw, 8.5rem);
+  }
+
+  .spatial-type-front {
+    bottom: auto;
+    top: calc(42% + 14vw);
+    left: auto;
+    right: 6vw;
+    font-size: clamp(4rem, 14.5vw, 8rem);
+  }
+
+  .spatial-editorial-slot {
+    left: 6vw;
+    right: 6vw;
+    top: auto;
+    bottom: 62px;
+    transform: none;
+    max-width: none;
+  }
+
+  .spatial-index-inner {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.5rem;
+  }
+
+  .spatial-hairline {
+    display: none;
+  }
+
+  .spatial-stream-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.85rem 1.4rem;
   }
 }
 
 @media (max-width: 768px) {
-  .poster-type-stage {
-    padding: 5.5rem 1.25rem 10.5rem;
+  .poster-monolith-slot {
+    left: 50%;
+    top: 39%;
+    width: 88vw;
   }
 
-  .poster-type-row {
-    font-size: clamp(3.4rem, 17vw, 6.2rem);
+  .spatial-type-back {
+    top: 4.8rem;
+    font-size: clamp(3.2rem, 17vw, 5.4rem);
   }
 
-  .poster-video-anchor {
-    width: 90vw;
-    margin-bottom: 6vh;
+  .spatial-type-front {
+    top: calc(39% + 19vw);
+    right: 4vw;
+    font-size: clamp(3.2rem, 16.5vw, 5.2rem);
   }
 
-  .poster-video-cta {
-    padding: 0.55rem 0.95rem;
-    font-size: 0.82rem;
+  .monolith-play-cue {
+    top: calc(100% + 0.75rem);
+    font-size: 0.86rem;
+    letter-spacing: 0.14em;
   }
 
-  .poster-bottom-rail {
-    left: 1.25rem;
-    right: 1.25rem;
-    bottom: 64px;
-    padding-top: 0.75rem;
-    gap: 0.65rem;
+  .spatial-editorial-slot {
+    left: 6vw;
+    right: 6vw;
+    bottom: 68px;
   }
 
-  .poster-meta-sub {
-    font-size: 0.6rem;
-    letter-spacing: 0.1em;
+  .spatial-index-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.9rem;
   }
 
-  .poster-stream-nav {
-    gap: 0.85rem 1.35rem;
+  .spatial-artist {
+    font-size: 1.25rem;
   }
 
-  .poster-stream-link {
+  .spatial-credits {
+    font-size: 0.62rem;
+    letter-spacing: 0.11em;
+  }
+
+  .spatial-stream-list {
+    gap: 0.65rem 1.25rem;
+  }
+
+  .spatial-stream-link {
     font-size: 1rem;
+  }
+
+  .spatial-stream-link:hover {
+    transform: none;
   }
 }
 
 @media (max-width: 480px) {
-  .poster-type-row {
-    font-size: clamp(2.8rem, 16.5vw, 4.4rem);
+  .spatial-editorial-slot {
+    bottom: 76px;
   }
+}
 
-  .poster-bottom-rail {
-    bottom: 72px;
+@media (prefers-reduced-motion: reduce) {
+  .poster-monolith-levitate {
+    animation: none;
   }
 }

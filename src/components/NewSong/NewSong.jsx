@@ -4,12 +4,12 @@ import {
   useScroll,
   useTransform,
   useMotionValueEvent,
-  useMotionTemplate,
   useSpring,
   useMotionValue
 } from 'framer-motion';
 import './NewSong.css';
-import HeroWebGLTransition from '../Hero/HeroWebGLTransition';
+import ReleaseDitherCanvas from './ReleaseDitherCanvas';
+import AmbientDust from './AmbientDust';
 import GlitchTearWebGL from './GlitchTearWebGL';
 import Gramophone from '../Gramophone/Gramophone';
 import About from '../About/About';
@@ -24,43 +24,37 @@ const LATEST_RELEASE = {
   releaseDate: '19.11.2026',
   albumDate: '11.12.2026',
   producers: 'KUBI PRODUCENT & MARCELI',
-  youtubeId: 'KMQQtlTJvMo',
+  coverSrc: '/release-cover.jpg',
   youtubeUrl: 'https://www.youtube.com/watch?v=KMQQtlTJvMo',
   smartLink: 'https://yfl.lnk.to/ZAKAZDYMRA2EM',
   platforms: [
     {
       id: 'spotify',
       name: 'SPOTIFY',
-      url: 'https://yfl.lnk.to/ZAKAZDYMRA2EM',
-      accent: '#1DB954'
+      url: 'https://yfl.lnk.to/ZAKAZDYMRA2EM'
     },
     {
       id: 'apple',
       name: 'APPLE MUSIC',
-      url: 'https://music.apple.com/pl/album/za-ka%C5%BCdym-ra2em-single/1852927950',
-      accent: '#FC3C44'
+      url: 'https://music.apple.com/pl/album/za-ka%C5%BCdym-ra2em-single/1852927950'
     },
     {
       id: 'ytmusic',
       name: 'YOUTUBE MUSIC',
-      url: 'https://music.youtube.com/watch?v=KMQQtlTJvMo',
-      accent: '#FF2020'
+      url: 'https://music.youtube.com/watch?v=KMQQtlTJvMo'
     },
     {
       id: 'tidal',
       name: 'TIDAL',
-      url: 'https://yfl.lnk.to/ZAKAZDYMRA2EM',
-      accent: '#00F0FF'
+      url: 'https://yfl.lnk.to/ZAKAZDYMRA2EM'
     }
   ]
 };
 
 const NewSong = forwardRef((props, ref) => {
   const scrollRef = useRef(null);
-  const revealClipRef = useRef(null);
   const gramophoneLayerRef = useRef(null);
   const previousThemeRef = useRef(null);
-  const [hoveredAccent, setHoveredAccent] = useState(null);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -70,16 +64,23 @@ const NewSong = forwardRef((props, ref) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Mouse parallax for kinetic brutalist typography & cinema viewport
+  // Smooth 3D spatial camera parallax driven by cursor inside the tiled room
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
-  const smoothMX = useSpring(mouseX, { stiffness: 90, damping: 22 });
-  const smoothMY = useSpring(mouseY, { stiffness: 90, damping: 22 });
+  const smoothMX = useSpring(mouseX, { stiffness: 65, damping: 24 });
+  const smoothMY = useSpring(mouseY, { stiffness: 65, damping: 24 });
 
-  const typeLeftX = useTransform(smoothMX, [-0.5, 0.5], [-18, 18]);
-  const typeRightX = useTransform(smoothMX, [-0.5, 0.5], [18, -18]);
-  const frameTiltX = useTransform(smoothMY, [-0.5, 0.5], [5, -5]);
-  const frameTiltY = useTransform(smoothMX, [-0.5, 0.5], [-6, 6]);
+  // Mid-deep plane: ZA KAŻDYM floating behind the monolith
+  const typeBackX = useTransform(smoothMX, [-0.5, 0.5], [-20, 20]);
+  const typeBackY = useTransform(smoothMY, [-0.5, 0.5], [-10, 10]);
+
+  // Center plane: Borderless floating monolith gentle 3D tilt (no XY dodging so hover is 100% locked!)
+  const frameTiltX = useTransform(smoothMY, [-0.5, 0.5], [3.8, -3.8]);
+  const frameTiltY = useTransform(smoothMX, [-0.5, 0.5], [-4.8, 4.8]);
+
+  // Foreground plane: RA2EM drifting closer to camera (editorial index stays steady for crisp link hover)
+  const typeFrontX = useTransform(smoothMX, [-0.5, 0.5], [24, -24]);
+  const typeFrontY = useTransform(smoothMY, [-0.5, 0.5], [12, -12]);
 
   const handlePanelMouseMove = (e) => {
     if (isMobile) return;
@@ -87,12 +88,13 @@ const NewSong = forwardRef((props, ref) => {
     mouseY.set(e.clientY / window.innerHeight - 0.5);
   };
 
-  // --- TIGHT, ZERO-DEAD-SCROLL TIMELINE (1250vh) ---
-  // 0.000 -> 0.095 : Hero -> NewSong WebGL Liquid Chrome Portal
-  // 0.095 -> 0.135 : Crisp breath on full ZA KAŻDYM RA2EM poster
-  // 0.135 -> 0.255 : WebGL Lost Media VHS Rewind + -25deg Diagonal Glitch Tear -> Discography
-  // 0.260 -> 0.560 : 4 Album Cards ScrollStack
-  // 0.570 -> 0.740 : Option A: Cards Scatter + Rising Stage (About)
+  // --- UNIFIED TIMELINE (1350vh) ---
+  // 0.000 -> 0.125 : Hero 12,288-particle 3D dust shatter -> organically condenses into borderless monolith
+  // 0.106 -> 0.126 : Seamless 1:1 handoff into floating 3D spatial ZA KAŻDYM RA2EM world
+  // 0.126 -> 0.165 : Breath & 3D drift inside the tiled room
+  // 0.165 -> 0.275 : -25deg Diagonal Aperture -> Discography
+  // 0.275 -> 0.560 : 4 Album Cards ScrollStack
+  // 0.570 -> 0.750 : Option A: Cards Scatter + Rising Stage (About)
   // 0.840 -> 1.000 : SmokeTransition -> Merch
   const { scrollYProgress: contentProgress } = useScroll({
     target: scrollRef,
@@ -113,30 +115,33 @@ const NewSong = forwardRef((props, ref) => {
     }
   });
 
-  // === 1. HERO -> NEWSONG WEBGL LIQUID PORTAL (0.00 -> 0.095) ===
-  const webglRevealProgress = useTransform(contentProgress, [0.0, 0.095], [0, 1]);
-  const viewportPointerEvents = useTransform(contentProgress, (v) => (v >= 0.045 ? 'auto' : 'none'));
+  // === 1. SEAMLESS 3D SPATIAL HANDOFF FROM HERO DUST MORPH (0.112 -> 0.124) ===
+  const stageOpacity = useTransform(contentProgress, [0.112, 0.124], [0, 1]);
+  const viewportPointerEvents = useTransform(contentProgress, (v) => (v >= 0.108 ? 'auto' : 'none'));
 
-  // Dynamic entrance happening LIVE under the rising WebGL wave
-  const bgScale = useTransform(contentProgress, [0.0, 0.11, 0.25], [1.22, 1.03, 1.12]);
-  const bgBrightness = useTransform(contentProgress, [0.0, 0.09, 0.14, 0.24], [0.42, 0.82, 0.82, 0.55]);
-  const bgFilter = useMotionTemplate`brightness(${bgBrightness}) contrast(1.08)`;
+  // Monumental 3D typography floats out of depth (behind + in front of monolith)
+  const backTitleOpacity = useTransform(contentProgress, [0.112, 0.146, 0.175, 0.245], [0, 1, 1, 0.15]);
+  const backTitleX = useTransform(contentProgress, [0.112, 0.148, 0.17, 0.27], ['-5%', '0%', '0%', '-10%']);
+  const backTitleScale = useTransform(contentProgress, [0.112, 0.148], [0.92, 1]);
 
-  const titleTopX = useTransform(contentProgress, [0.01, 0.10, 0.14, 0.25], ['-6%', '0%', '0%', '-10%']);
-  const titleBottomX = useTransform(contentProgress, [0.01, 0.10, 0.14, 0.25], ['6%', '0%', '0%', '10%']);
-  const titleOpacity = useTransform(contentProgress, [0.01, 0.09], [0.25, 1]);
+  const frontTitleOpacity = useTransform(contentProgress, [0.116, 0.152, 0.175, 0.24], [0, 1, 1, 0]);
+  const frontTitleX = useTransform(contentProgress, [0.116, 0.152, 0.17, 0.27], ['6%', '0%', '0%', '12%']);
+  const frontTitleScale = useTransform(contentProgress, [0.116, 0.152], [1.08, 1]);
 
-  const videoCardY = useTransform(contentProgress, [0.01, 0.095], [70, 0]);
-  const videoCardScale = useTransform(contentProgress, [0.01, 0.095, 0.14, 0.25], [0.9, 1, 1, 1.06]);
-  const railY = useTransform(contentProgress, [0.03, 0.10], [28, 0]);
-  const railOpacity = useTransform(contentProgress, [0.03, 0.095, 0.14, 0.21], [0, 1, 1, 0]);
+  // Floating monolith stays 1:1 locked during handoff, then softly floats forward on scroll exit
+  const monolithScale = useTransform(contentProgress, [0.165, 0.27], [1, 1.045]);
+  const monolithCtaOpacity = useTransform(contentProgress, [0.120, 0.148, 0.175, 0.235], [0, 1, 1, 0]);
 
-  // Smooth exit scale/pointer handoff on the outgoing dark poster (zero shaky skew)
-  const posterLayerPointerEvents = useTransform(contentProgress, (v) => (v >= 0.045 && v < 0.19 ? 'auto' : 'none'));
+  // Floating spatial credits & stream index emerge organically in foreground 3D space
+  const indexOpacity = useTransform(contentProgress, [0.118, 0.152, 0.175, 0.235], [0, 1, 1, 0]);
+  const indexEntryX = useTransform(contentProgress, [0.118, 0.152], [28, 0]);
+  const indexEntryY = useTransform(contentProgress, [0.118, 0.152], [14, 0]);
 
-  // === 2. NEWSONG -> DISCOGRAPHY: -25deg DIAGONAL CHROME APERTURE (0.135 -> 0.25) ===
-  const glitchTearProgress = useTransform(contentProgress, [0.135, 0.25], [0, 1]);
-  const gramophoneEntranceScale = useTransform(contentProgress, [0.135, 0.25], [1.07, 1]);
+  const posterLayerPointerEvents = useTransform(contentProgress, (v) => (v >= 0.108 && v < 0.23 ? 'auto' : 'none'));
+
+  // === 2. NEWSONG -> DISCOGRAPHY: -25deg DIAGONAL APERTURE (0.165 -> 0.275) ===
+  const glitchTearProgress = useTransform(contentProgress, [0.165, 0.275], [0, 1]);
+  const gramophoneEntranceScale = useTransform(contentProgress, [0.165, 0.275], [1.07, 1]);
 
   // === 3. OPTION A: CARDS SCATTER -> RISING STAGE (ABOUT) ===
   const aboutEnterProgress = useTransform(contentProgress, [0.61, 0.75], [0, 1]);
@@ -147,8 +152,6 @@ const NewSong = forwardRef((props, ref) => {
   const cloudProgress = useTransform(contentProgress, [0.84, 1.0], [0, 1]);
   const smokeZIndex = useTransform(contentProgress, [0, 0.79, 0.80, 1], [0, 0, 100, 100]);
   const smokeOpacity = useTransform(contentProgress, [0.77, 0.84], [0, 1]);
-
-  const thumbUrl = `https://img.youtube.com/vi/${LATEST_RELEASE.youtubeId}/maxresdefault.jpg`;
 
   return (
     <motion.section
@@ -165,110 +168,147 @@ const NewSong = forwardRef((props, ref) => {
         className="newsong-sticky-viewport"
         style={{ pointerEvents: viewportPointerEvents }}
       >
-        {/* Clipped container revealed live underneath the Hero molten WebGL frontier */}
-        <div ref={revealClipRef} className="newsong-reveal-clip">
-
-          {/* LAYER 1: FULL-BLEED BRUTALIST EDITORIAL POSTER (ZA KAŻDYM RA2EM) */}
+        <motion.div
+          className="newsong-stage-handoff"
+          style={{ opacity: stageOpacity }}
+        >
+          {/* LAYER 1: FLOATING 3D SPATIAL SCREENING WORLD (Transparent directly over Hero's bright live Bayer tiled room!) */}
           <motion.div
             className="newsong-panel"
             onMouseMove={handlePanelMouseMove}
-            style={{
-              '--release-accent': hoveredAccent || '#ff2a2a',
-              pointerEvents: posterLayerPointerEvents
-            }}
+            style={{ pointerEvents: posterLayerPointerEvents }}
           >
+            {/* Subtle localized depth mist ONLY behind right text column (keeps bright tiled room 100% untouched!) */}
+            <div className="spatial-readability-mist" aria-hidden="true" />
+
+            {/* DEPTH PLANE 1: FLOATING 3D MONUMENTAL BACK TYPOGRAPHY (Behind Monolith) */}
             <motion.div
-              className="poster-bg-layer"
-              style={{ scale: bgScale, filter: bgFilter, willChange: 'transform, filter' }}
+              className="spatial-type-back"
               aria-hidden="true"
+              style={{
+                opacity: backTitleOpacity,
+                x: isMobile ? 0 : typeBackX,
+                y: isMobile ? 0 : typeBackY,
+                scale: backTitleScale
+              }}
             >
-              <img src={thumbUrl} alt="" className="poster-bg-img" />
+              <motion.span style={{ x: backTitleX }}>
+                {LATEST_RELEASE.titleLine1}
+              </motion.span>
             </motion.div>
 
-            <div className="poster-vignette" aria-hidden="true" />
-            <div className="poster-accent-wash" aria-hidden="true" />
-            <div className="noise-overlay" aria-hidden="true" />
+            {/* DEPTH PLANE 2: LIVE 3D AMBIENT DUST MOTES (Continuing Multi's dust!) */}
+            <AmbientDust mouseX={smoothMX} mouseY={smoothMY} />
 
-            <div className="poster-type-stage" aria-hidden="true">
+            {/* DEPTH PLANE 3: BORDERLESS FLOATING FILM MONOLITH (Pixel-locked to Hero dot assembly) */}
+            <div className="poster-monolith-slot">
               <motion.div
-                className="poster-type-row poster-type-top"
-                style={{ x: isMobile ? 0 : typeLeftX, opacity: titleOpacity }}
+                className="poster-monolith-float"
+                style={{
+                  scale: monolithScale,
+                  willChange: 'transform'
+                }}
               >
-                <motion.span style={{ x: titleTopX }}>{LATEST_RELEASE.titleLine1}</motion.span>
-              </motion.div>
-              <motion.div
-                className="poster-type-row poster-type-bottom"
-                style={{ x: isMobile ? 0 : typeRightX, opacity: titleOpacity }}
-              >
-                <motion.span style={{ x: titleBottomX }}>{LATEST_RELEASE.titleLine2}</motion.span>
+                <div className="poster-monolith-levitate">
+                  <motion.a
+                    href={LATEST_RELEASE.youtubeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="poster-video-frame"
+                    aria-label={`Obejrzyj teledysk ${LATEST_RELEASE.artists} — ${LATEST_RELEASE.fullTitle} na YouTube`}
+                    style={{
+                      rotateX: isMobile ? 0 : frameTiltX,
+                      rotateY: isMobile ? 0 : frameTiltY,
+                      transformPerspective: 1200
+                    }}
+                  >
+                    <ReleaseDitherCanvas
+                      src={LATEST_RELEASE.coverSrc}
+                      alt={`${LATEST_RELEASE.artists} — ${LATEST_RELEASE.fullTitle}`}
+                    />
+                    <div className="poster-video-scrim" />
+                  </motion.a>
+                </div>
+
+                <motion.a
+                  href={LATEST_RELEASE.youtubeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="monolith-play-cue"
+                  style={{ opacity: monolithCtaOpacity }}
+                >
+                  <span className="monolith-play-line" aria-hidden="true" />
+                  <span>OBEJRZYJ TELEDYSK</span>
+                  <span className="monolith-play-arrow" aria-hidden="true">↗</span>
+                </motion.a>
               </motion.div>
             </div>
 
+            {/* DEPTH PLANE 4: FLOATING GHOST FOREGROUND TYPOGRAPHY (Overlapping lower edge for 3D sandwich!) */}
             <motion.div
-              className="poster-video-anchor"
-              style={{ y: videoCardY, scale: videoCardScale, willChange: 'transform' }}
+              className="spatial-type-front"
+              aria-hidden="true"
+              style={{
+                opacity: frontTitleOpacity,
+                x: isMobile ? 0 : typeFrontX,
+                y: isMobile ? 0 : typeFrontY,
+                scale: frontTitleScale
+              }}
             >
-              <motion.a
-                href={LATEST_RELEASE.youtubeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="poster-video-frame"
-                aria-label={`Obejrzyj teledysk ${LATEST_RELEASE.artists} — ${LATEST_RELEASE.fullTitle} na YouTube`}
-                style={{
-                  rotateX: isMobile ? 0 : frameTiltX,
-                  rotateY: isMobile ? 0 : frameTiltY,
-                  transformPerspective: 1200
-                }}
+              <motion.span style={{ x: frontTitleX }}>
+                {LATEST_RELEASE.titleLine2}
+              </motion.span>
+            </motion.div>
+
+            {/* DEPTH PLANE 5: FLOATING SPATIAL EDITORIAL INDEX (Free-floating in open 3D right space, rock-steady hover) */}
+            <aside className="spatial-editorial-slot">
+              <motion.div
+                className="spatial-editorial-index"
+                style={{ opacity: indexOpacity }}
               >
-                <img
-                  src={thumbUrl}
-                  alt={`${LATEST_RELEASE.artists} — ${LATEST_RELEASE.fullTitle}`}
-                  className="poster-video-img"
-                  loading="lazy"
-                  width="1280"
-                  height="720"
-                />
-                <div className="poster-video-scrim" />
-                <div className="poster-video-cta">
-                  <span className="poster-video-cta-label">OBEJRZYJ TELEDYSK</span>
-                  <span className="poster-video-cta-arrow" aria-hidden="true">↗</span>
-                </div>
-              </motion.a>
-            </motion.div>
+                <motion.div
+                  className="spatial-index-inner"
+                  style={{
+                    x: isMobile ? 0 : indexEntryX,
+                    y: indexEntryY
+                  }}
+                >
+                  <div className="spatial-meta-group">
+                    <h2 className="poster-sr-heading">{LATEST_RELEASE.artists} — {LATEST_RELEASE.fullTitle}</h2>
+                    <span className="spatial-kicker">
+                      NOWY SINGIEL · {LATEST_RELEASE.releaseDate}
+                    </span>
+                    <span className="spatial-artist">{LATEST_RELEASE.artists}</span>
+                    <span className="spatial-credits">
+                      {LATEST_RELEASE.album} ({LATEST_RELEASE.albumDate})
+                    </span>
+                    <span className="spatial-credits spatial-credits-muted">
+                      PROD. {LATEST_RELEASE.producers}
+                    </span>
+                  </div>
 
-            <motion.div
-              className="poster-bottom-rail"
-              style={{ y: railY, opacity: railOpacity }}
-            >
-              <div className="poster-meta-block">
-                <h2 className="poster-sr-heading">{LATEST_RELEASE.artists} — {LATEST_RELEASE.fullTitle}</h2>
-                <span className="poster-meta-primary">{LATEST_RELEASE.artists}</span>
-                <span className="poster-meta-sub">
-                  {LATEST_RELEASE.album} ({LATEST_RELEASE.albumDate}) • PROD. {LATEST_RELEASE.producers}
-                </span>
-              </div>
+                  <div className="spatial-hairline" aria-hidden="true" />
 
-              <nav className="poster-stream-nav" aria-label="Platformy streamingowe">
-                {LATEST_RELEASE.platforms.map((p) => (
-                  <a
-                    key={p.id}
-                    href={p.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="poster-stream-link"
-                    style={{ '--link-accent': p.accent }}
-                    onMouseEnter={() => setHoveredAccent(p.accent)}
-                    onMouseLeave={() => setHoveredAccent(null)}
-                  >
-                    <span>{p.name}</span>
-                    <span className="poster-stream-arrow" aria-hidden="true">↗</span>
-                  </a>
-                ))}
-              </nav>
-            </motion.div>
+                  <nav className="spatial-stream-list" aria-label="Platformy streamingowe">
+                    {LATEST_RELEASE.platforms.map((p) => (
+                      <a
+                        key={p.id}
+                        href={p.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="spatial-stream-link"
+                      >
+                        <span className="spatial-stream-name">{p.name}</span>
+                        <span className="spatial-stream-arrow" aria-hidden="true">↗</span>
+                      </a>
+                    ))}
+                  </nav>
+                </motion.div>
+              </motion.div>
+            </aside>
           </motion.div>
 
-          {/* LAYER 2: GRAMOPHONE / DISCOGRAPHY (Revealed inside the -25deg Glitch Tear!) */}
+          {/* LAYER 2: GRAMOPHONE / DISCOGRAPHY */}
           <div ref={gramophoneLayerRef} className="newsong-gramophone-layer">
             <Gramophone
               contentProgress={contentProgress}
@@ -277,7 +317,6 @@ const NewSong = forwardRef((props, ref) => {
             />
           </div>
 
-          {/* Synchronized WebGL Lost Media VHS Rewind + -25deg Glitch Tear Overlay */}
           <GlitchTearWebGL
             progress={glitchTearProgress}
             targetRef={gramophoneLayerRef}
@@ -304,10 +343,7 @@ const NewSong = forwardRef((props, ref) => {
           >
             <SmokeTransition progress={cloudProgress} />
           </motion.div>
-        </div>
-
-        {/* Synchronized WebGL Hero -> NewSong Molten Chrome Frontier Ribbon */}
-        <HeroWebGLTransition progress={webglRevealProgress} targetRef={revealClipRef} />
+        </motion.div>
       </motion.div>
     </motion.section>
   );

@@ -13,157 +13,65 @@
   width: 100%;
   color: white;
   overflow: hidden;
-  background-color: #111;
+  background-color: #07080a;
   perspective: 1200px;
   position: sticky;
   top: 0;
   z-index: 0;
 }
 
+.hero-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .hero-content-wrapper {
   position: relative;
   width: 100%;
   height: 100%;
-  display: grid;
-  place-items: center;
+  will-change: transform, filter;
 }
 
-/* GRID AREA DEFINITIONS */
-.hero-background-image,
-.text-young,
-.hero-person-container,
-.text-multi {
-  grid-area: 1 / 1;
-  margin: 0;
-}
-
-/* --- WARSTWA 0: TŁO --- */
-.hero-background-image {
-  z-index: 0;
-  height: 100%;
-  width: 100%;
-  object-fit: cover;
-  object-position: center;
-}
-
-/* --- WARSTWA 1: Napis "YOUNG" --- */
-.text-young {
-  z-index: 1;
-  font-family: "Antonio", sans-serif;
-  font-weight: 700;
-  font-size: 24vw;
-  letter-spacing: 0.03em;
-  color: #000;
-  text-shadow: 4px 4px 0px #333333, 8px 8px 0px #666666, 12px 12px 0px #999999;
-  transform: translateY(-34%);
-  pointer-events: none;
-}
-
-/* --- WARSTWA 2: KONTENER POSTACI --- */
-.hero-person-container {
-  z-index: 2;
-  width: 100%;
-  height: 100%;
+.hero-video-stage {
   position: relative;
-  display: grid;
-  place-items: center;
-}
-
-.hero-cutout-image {
-  grid-area: 1 / 1;
-  height: 100%;
   width: 100%;
-  object-fit: cover;
-  object-position: center;
-  /* filter: drop-shadow(3px 3px 8px rgba(0, 0, 0, 0.2)); - REMOVED FOR PERFORMANCE */
+  height: 100%;
+  z-index: 0;
+  overflow: hidden;
 }
 
-/* --- WARSTWA 3: Napis "MULTI" --- */
-.text-multi {
-  z-index: 3;
-  color: #fff;
-  font-family: "Bernoru", sans-serif;
-  text-shadow: 4px 4px 10px rgba(0, 0, 0, 0.6);
-  font-size: 7vw;
-  transform: translateY(80%);
-  pointer-events: none;
+.hero-shader-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
-/* --- NAWIGACJA --- */
-.hero-nav {
+/* In-viewport non-zero opacity keeps browser video decoder active at full FPS */
+.hero-video-source {
   position: absolute;
   top: 0;
   left: 0;
+  width: 2px;
+  height: 2px;
+  opacity: 0.001;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Graceful fallback if WebGL is unavailable (crops top RGB half of stacked video) */
+.hero-video-fallback {
   width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 2.5rem 3rem;
-  box-sizing: border-box;
-  z-index: 10;
-}
-
-.nav-logo {
-  height: 80px;
-  width: auto;
-}
-
-.nav-menu-icon {
-  font-size: 2.5rem;
-  cursor: pointer;
-  color: rgb(0, 0, 0);
-}
-
-/* --- RESPONSIVE DESIGN --- */
-
-/* Tablet */
-@media (max-width: 1024px) {
-  .text-young {
-    font-size: 20vw;
-    text-shadow: 3px 3px 0px #333333, 6px 6px 0px #666666, 9px 9px 0px #999999;
-  }
-
-  .text-multi {
-    font-size: 8vw;
-  }
-}
-
-/* Mobile */
-@media (max-width: 768px) {
-  .text-young {
-    font-size: 25vw;
-    transform: translateY(-30%);
-    z-index: 4;
-    -webkit-text-stroke: 1px white;
-    text-shadow: 2px 2px 0px #333333, 4px 4px 0px #666666;
-  }
-
-  .text-multi {
-    font-size: 10vw;
-    transform: translateY(70%);
-    text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.6);
-  }
-
-  .hero-section {
-    perspective: 800px;
-  }
-}
-
-/* Mobile Small */
-@media (max-width: 480px) {
-  .text-young {
-    font-size: 35vw;
-    transform: translateY(-28%);
-    text-shadow: 2px 2px 0px #333333, 3px 3px 0px #666666;
-  }
-
-  .text-multi {
-    font-size: 12vw;
-    transform: translateY(65%);
-    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5);
-  }
-
-  .hero-section {
-    perspective: 600px;
-  }
+  height: 200%;
+  object-fit: cover;
+  object-position: top center;
+  filter: contrast(1.15) saturate(0.75);
 }

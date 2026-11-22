@@ -85,10 +85,10 @@ function HomePage() {
 
       switch (sectionId) {
         case 'nowa-piosenka':
-          scrollPosition = newSongTop + (newSongHeight * 0.11);
+          scrollPosition = newSongTop + (newSongHeight * 0.14);
           break;
         case 'dyskografia':
-          scrollPosition = newSongTop + (newSongHeight * 0.27);
+          scrollPosition = newSongTop + (newSongHeight * 0.29);
           break;
         case 'o-mnie':
           scrollPosition = newSongTop + (newSongHeight * 0.76);

@@ -155,7 +155,7 @@ const ScrollStack = ({
 
   const stackProgress = useTransform(
     scrollProgress,
-    [0.25, 0.56],
+    [0.275, 0.56],
     [0, 1]
   );
 

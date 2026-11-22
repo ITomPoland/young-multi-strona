@@ -29,6 +29,55 @@
   /* Białe logo */
 }
 
+/* --- RIGHT ACTIONS (SHOP + HAMBURGER) --- */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2.2rem;
+}
+
+.header-shop-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #ffffff;
+  text-decoration: none;
+  font-family: var(--font-heading), sans-serif;
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding-bottom: 0.2rem;
+  transition: opacity 0.25s ease;
+}
+
+.header-shop-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.5px;
+  background: #ffffff;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.header-shop-link:hover::after {
+  transform: scaleX(1);
+}
+
+.header-shop-arrow {
+  font-size: 0.9em;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.header-shop-link:hover .header-shop-arrow {
+  transform: translate(3px, -3px);
+}
+
 /* --- RESPONSIVE DESIGN --- */
 
 @media (max-width: 1024px) {
@@ -38,6 +87,14 @@
 
   .header-logo {
     height: 60px;
+  }
+
+  .header-actions {
+    gap: 1.6rem;
+  }
+
+  .header-shop-link {
+    font-size: 1rem;
   }
 }
 
@@ -49,6 +106,15 @@
   .header-logo {
     height: 50px;
   }
+
+  .header-actions {
+    gap: 1.2rem;
+  }
+
+  .header-shop-link {
+    font-size: 0.95rem;
+    letter-spacing: 0.12em;
+  }
 }
 
 @media (max-width: 480px) {
@@ -58,5 +124,13 @@
 
   .header-logo {
     height: 45px;
+  }
+
+  .header-actions {
+    gap: 0.9rem;
+  }
+
+  .header-shop-link {
+    font-size: 0.85rem;
   }
 }

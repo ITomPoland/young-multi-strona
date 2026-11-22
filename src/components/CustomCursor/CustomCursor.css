@@ -32,11 +32,11 @@
     }
 }
 
-/* Main cursor dot */
+/* Main cursor dot (centered via negative offset so Framer Motion x/y/scale never overrides centering) */
 .custom-cursor-dot {
     position: fixed;
-    top: 0;
-    left: 0;
+    top: -4px;
+    left: -4px;
     width: 8px;
     height: 8px;
     background: #fff;
@@ -44,14 +44,13 @@
     pointer-events: none;
     z-index: 99999;
     mix-blend-mode: difference;
-    transform: translate(-50%, -50%);
 }
 
-/* Outer cursor ring */
+/* Outer cursor ring (centered via negative offset so ring stays concentric with dot at any scale) */
 .custom-cursor-ring {
     position: fixed;
-    top: 0;
-    left: 0;
+    top: -20px;
+    left: -20px;
     width: 40px;
     height: 40px;
     border: 1px solid rgba(255, 255, 255, 0.5);
@@ -59,7 +58,6 @@
     pointer-events: none;
     z-index: 99998;
     mix-blend-mode: difference;
-    transform: translate(-50%, -50%);
     transition: width 0.2s, height 0.2s;
 }
 
