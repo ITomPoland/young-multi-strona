@@ -1,9 +1,15 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence, useMotionValue } from 'framer-motion';
+import {
+  motion,
+  AnimatePresence,
+  useMotionValue,
+  useTransform,
+  useMotionTemplate,
+  useMotionValueEvent
+} from 'framer-motion';
 import './About.css';
 import { JellyDread } from './JellyDread';
 import { SpectralGuide } from './SpectralGuide';
-// 1. Importujemy nowy komponent twarzy
 import { FaceFeatures } from './FaceFeatures';
 import { SpeechBubble } from './SpeechBubble';
 
@@ -11,7 +17,6 @@ import { SpeechBubble } from './SpeechBubble';
 import headImgSrcset from '../../assets/head1.avif?w=400;800;1200&format=avif&as=srcset';
 import headImgFallback from '../../assets/head1.avif?w=800&format=avif';
 
-// (Twoje tablice factsLeft i factsRight pozostają bez zmian...)
 const factsLeft = [
   "Nazywam się Michał Rychlik, ale wszyscy znają mnie jako Young Multi — zaczynałem jako YouTuber i gamer.",
   "W 2017 wypuściłem mój pierwszy album 'Nowa Fala' i wskoczył od razu na szczyt OLiS.",
@@ -28,17 +33,58 @@ const factsRight = [
   "Wielu raperów mnie krytykowało, ale finalnie to ja otworzyłem drzwi dla nowych twórców z YouTube.",
 ];
 
-// (Twoje pozycje dredów...)
-// Konwersja na % (zakładając wirtualny kontener 1000x1000 dla łatwości,
-// ale w CSS będziemy skalować 'about-avatar-container' zachowując ratio).
-// x / 1000 * 100 -> %
 const dreadPositions = [
   { x: 35.5, y: 41.6 }, { x: 39.5, y: 39.5 }, { x: 44.5, y: 37.5 },
   { x: 48.5, y: 37.5 }, { x: 52.5, y: 37.5 }, { x: 57.5, y: 39.5 },
   { x: 61.5, y: 41.6 },
 ];
 
-function About({ externalOpacity }) {
+function About({ enterProgress }) {
+  // Fallback MotionValue (1 = fully revealed) if About is ever rendered standalone
+  const fallbackProgress = useMotionValue(1);
+  const progress = enterProgress || fallbackProgress;
+
+  // --- RISING STAGE CHOREOGRAPHY (Option A) ---
+  // 1. Overhead concert spotlight cone ignites from top edge
+  const spotlightOpacity = useTransform(progress, [0.05, 0.72], [0, 1]);
+  const spotlightScaleY = useTransform(progress, [0.05, 0.80], [0.4, 1]);
+
+  // 2. Architectural rim backlight halo behind Multi's silhouette
+  const rimOpacity = useTransform(progress, [0.18, 0.88], [0, 1]);
+  const rimScale = useTransform(progress, [0.18, 0.90], [0.65, 1]);
+
+  // 3. Giant background typography "O MNIE" rises & expands
+  const titleOpacity = useTransform(progress, [0.14, 0.72], [0, 1]);
+  const titleY = useTransform(progress, [0.14, 0.80], [72, 0]);
+  const titleScale = useTransform(progress, [0.14, 0.80], [0.92, 1]);
+
+  // 4. Multi's head + interactive dreads emerge out of stage shadow
+  const avatarY = useTransform(progress, [0.16, 0.95], ["34%", "0%"]);
+  const avatarScale = useTransform(progress, [0.16, 0.95], [0.9, 1]);
+  const avatarOpacity = useTransform(progress, [0.12, 0.48], [0, 1]);
+  const avatarBrightness = useTransform(progress, [0.16, 0.88], [0.32, 1]);
+  const avatarFilter = useMotionTemplate`brightness(${avatarBrightness})`;
+
+  // 5. Subtle interactive hint fades in once stage settles
+  const hintOpacity = useTransform(progress, [0.82, 0.98], [0, 1]);
+  const hintY = useTransform(progress, [0.82, 0.98], [14, 0]);
+
+  // 6. Mobile fact card entrance
+  const mobileFactOpacity = useTransform(progress, [0.35, 0.85], [0, 1]);
+  const mobileFactY = useTransform(progress, [0.35, 0.85], [24, 0]);
+
+  // Trigger organic dreads momentum sway as Multi finishes rising onto stage
+  const [swaySignal, setSwaySignal] = useState(0);
+  const hasSwayedRef = useRef(false);
+  useMotionValueEvent(progress, "change", (latest) => {
+    if (latest >= 0.72 && !hasSwayedRef.current) {
+      hasSwayedRef.current = true;
+      setSwaySignal((c) => c + 1);
+    } else if (latest < 0.25 && hasSwayedRef.current) {
+      hasSwayedRef.current = false;
+    }
+  });
+
   // --- DETEKCJA MOBILE ---
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -50,69 +96,58 @@ function About({ externalOpacity }) {
 
   // --- LOGIKA MOBILE (Carousel) ---
   const [mobileFactIndex, setMobileFactIndex] = useState(0);
-  // Łączymy fakty w jedną tablicę
   const mobileFacts = [...factsLeft, ...factsRight];
 
   useEffect(() => {
     if (!isMobile) return;
     const interval = setInterval(() => {
       setMobileFactIndex((prev) => (prev + 1) % mobileFacts.length);
-    }, 4000); // Zmiana co 4 sekundy
+    }, 4000);
     return () => clearInterval(interval);
   }, [isMobile, mobileFacts.length]);
 
-
-  // --- LOGIKA DESKTOP (Zachowana) ---
+  // --- LOGIKA DESKTOP ---
   const [activeInfo, setActiveInfo] = useState(null);
   const [infoText, setInfoText] = useState('');
-  // Nowy stan: czy tekst się pisze?
   const [isTyping, setIsTyping] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
 
-  // --- NOWE STANY DLA INTERAKCJI TWARZY (OPTIMIZED: Use MotionValue instead of State) ---
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
-  const [isIdle, setIsIdle] = useState(false); // Czy użytkownik jest nieaktywny?
-  const idleTimerRef = useRef(null); // Referencja do timera
+  const [isIdle, setIsIdle] = useState(false);
+  const idleTimerRef = useRef(null);
 
-  // MotionValue dla duszka (steruje offsetem wybranego dreda)
   const ghostDreadOffsetX = useMotionValue(0);
   const ghostDreadOffsetY = useMotionValue(0);
-  // Obiekt, który przekażemy do JellyDread i SpectralGuide
   const ghostDreadOffset = { x: ghostDreadOffsetX, y: ghostDreadOffsetY };
 
-  // Funkcja resetująca timer bezczynności. Wywoływana przy każdej akcji.
   const resetIdleTimer = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    setIsIdle(false); // Użytkownik coś robi, więc nie jest idle
+    setIsIdle(false);
 
-    // Jeśli aktualnie NIE wyświetlamy ciekawostki, uruchom timer na 2s
     if (!activeInfo) {
       idleTimerRef.current = setTimeout(() => {
-        setIsIdle(true); // Po 2s bezruchu ustawiamy stan idle
+        setIsIdle(true);
       }, 2000);
     }
   }, [activeInfo]);
 
-  // Handler ruchu myszki w obrębie sekcji - OPTIMIZED: No re-renders!
   const handleMouseMove = (e) => {
-    if (isMobile) return; // Nie obsługujemy na mobile
+    if (isMobile) return;
     mouseX.set(e.clientX);
     mouseY.set(e.clientY);
-    resetIdleTimer(); // Ruch myszką resetuje timer
+    resetIdleTimer();
   };
 
-  // Handler startu przeciągania dreda
   const handleDragStart = () => {
-    resetIdleTimer(); // Przeciąganie to aktywność
+    setHasInteracted(true);
+    resetIdleTimer();
   };
 
-  // Logika ustalająca, co mają robić usta
-  // Usta ruszają się TYLKO gdy jest aktywne info I tekst się pisze
   const currentMouthState = (activeInfo && isTyping) ? 'talking' : (isIdle ? 'prompt' : 'idle');
 
-
   const showInfo = useCallback((direction) => {
-    // (Twoja logika losowania...)
+    setHasInteracted(true);
     if (direction === 'left') {
       setInfoText(factsLeft[Math.floor(Math.random() * factsLeft.length)]);
       setActiveInfo('left');
@@ -120,8 +155,8 @@ function About({ externalOpacity }) {
       setInfoText(factsRight[Math.floor(Math.random() * factsRight.length)]);
       setActiveInfo('right');
     }
-    setIsTyping(true); // Zaczynamy pisać
-    resetIdleTimer(); // Pokazanie info resetuje timer
+    setIsTyping(true);
+    resetIdleTimer();
   }, [resetIdleTimer]);
 
   const handleTypingComplete = () => {
@@ -132,14 +167,10 @@ function About({ externalOpacity }) {
     if (activeInfo) return;
     if (offsetX < -100) showInfo('left');
     else if (offsetX > 100) showInfo('right');
-    // Nie musimy tu resetować timera, bo handleMouseMove i tak to robi ciągle
   };
 
-  const handleDragEnd = () => {
-    // resetIdleTimer();
-  };
+  const handleDragEnd = () => {};
 
-  // Dodajmy zamykanie dymka po kliknięciu w tło (sekcję)
   const handleSectionClick = () => {
     if (isMobile) return;
     if (activeInfo) {
@@ -148,28 +179,40 @@ function About({ externalOpacity }) {
     }
   };
 
-  // Start timera po załadowaniu komponentu
   useEffect(() => {
     if (isMobile) return;
     resetIdleTimer();
-    // Sprzątanie timera przy odmontowaniu
     return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current); };
   }, [resetIdleTimer, isMobile]);
-
 
   // --- RENDEROWANIE ---
 
   // 1. WIDOK MOBILNY
   if (isMobile) {
     return (
-      <section className="about-section mobile-view" style={{ opacity: externalOpacity }}>
-        {/* Góra: Tytuł */}
-        <div className="mobile-title-container">
-          <h2 className="about-title mobile">O MNIE</h2>
-        </div>
+      <section className="about-section mobile-view">
+        <motion.div
+          className="about-stage-spotlight"
+          style={{ opacity: spotlightOpacity, scaleY: spotlightScaleY }}
+          aria-hidden="true"
+        />
+        <motion.div
+          className="about-rim-glow"
+          style={{ opacity: rimOpacity, scale: rimScale }}
+          aria-hidden="true"
+        />
 
-        {/* Środek: Carousel z faktami */}
-        <div className="mobile-carousel-container">
+        <motion.div
+          className="mobile-title-container"
+          style={{ opacity: titleOpacity, y: titleY }}
+        >
+          <h2 className="about-title mobile">O MNIE</h2>
+        </motion.div>
+
+        <motion.div
+          className="mobile-carousel-container"
+          style={{ opacity: mobileFactOpacity, y: mobileFactY }}
+        >
           <AnimatePresence mode="wait">
             <motion.div
               key={mobileFactIndex}
@@ -182,38 +225,62 @@ function About({ externalOpacity }) {
               {mobileFacts[mobileFactIndex]}
             </motion.div>
           </AnimatePresence>
-        </div>
+        </motion.div>
 
-        {/* Dół: Statyczna głowa */}
-        <img
+        <motion.img
           srcSet={headImgSrcset}
           src={headImgFallback}
           sizes="(max-width: 768px) 80vw, 40vw"
           alt="Young Multi"
           className="about-head mobile-head"
+          style={{
+            y: avatarY,
+            scale: avatarScale,
+            opacity: avatarOpacity,
+            filter: avatarFilter
+          }}
         />
       </section>
     );
   }
 
-  // 2. WIDOK DESKTOP (Oryginalny)
+  // 2. WIDOK DESKTOP
   return (
     <motion.section
       className="about-section"
-      style={{ opacity: externalOpacity }}
       onMouseMove={handleMouseMove}
-      onClick={handleSectionClick} // Kliknięcie w tło zamyka dymek
+      onClick={handleSectionClick}
     >
+      {/* Overhead Concert Spotlight + Silhouette Rim Backlight */}
+      <motion.div
+        className="about-stage-spotlight"
+        style={{ opacity: spotlightOpacity, scaleY: spotlightScaleY }}
+        aria-hidden="true"
+      />
+      <motion.div
+        className="about-rim-glow"
+        style={{ opacity: rimOpacity, scale: rimScale }}
+        aria-hidden="true"
+      />
 
       {/* 1. WARSTWA TŁA: TYTUŁ "O MNIE" */}
-      {/* Przeniesiony na początek, żeby był "za" głową */}
-      <div className="about-content">
+      <motion.div
+        className="about-content"
+        style={{ opacity: titleOpacity, y: titleY, scale: titleScale }}
+      >
         <h2 className="about-title">O MNIE</h2>
-      </div>
+      </motion.div>
 
-      {/* 2. WARSTWA ŚRODKOWA: GŁOWA I DREDY */}
-      <div className="about-avatar-container">
-        {/* A. Zdjęcie głowy */}
+      {/* 2. WARSTWA ŚRODKOWA: GŁOWA I DREDY (RISING STAGE) */}
+      <motion.div
+        className="about-avatar-container"
+        style={{
+          y: avatarY,
+          scale: avatarScale,
+          opacity: avatarOpacity,
+          filter: avatarFilter
+        }}
+      >
         <img
           srcSet={headImgSrcset}
           src={headImgFallback}
@@ -223,14 +290,12 @@ function About({ externalOpacity }) {
           style={{ zIndex: 1 }}
         />
 
-        {/* B. Komponent Twarzy (Oczy i Usta) */}
         <FaceFeatures
           mouseX={mouseX}
           mouseY={mouseY}
           mouthState={currentMouthState}
         />
 
-        {/* C. Interaktywne Dredy */}
         {dreadPositions.map((pos, i) => (
           <motion.div
             key={i}
@@ -239,12 +304,13 @@ function About({ externalOpacity }) {
           >
             <JellyDread
               dreadId={`dread-gradient-${i}`}
+              dreadIndex={i}
+              swaySignal={swaySignal}
               onDragStart={handleDragStart}
               onDragReport={handleDragReport}
               onDragEnd={handleDragEnd}
-              ghostOffset={i === 3 ? ghostDreadOffset : null} // Tylko dred nr 3 ma ducha
+              ghostOffset={i === 3 ? ghostDreadOffset : null}
             >
-              {/* Definicja gradientu przekazywana jako children (dla kompatybilności z Twoim plikiem) */}
               <linearGradient
                 id={`dread-gradient-${i}`}
                 gradientUnits="userSpaceOnUse"
@@ -261,14 +327,10 @@ function About({ externalOpacity }) {
           </motion.div>
         ))}
 
-        {/* D. Spectral Guide (Duszek) */}
         <AnimatePresence>
           {!activeInfo && isIdle && !isMobile && (
             <SpectralGuide
               startPos={{
-                // Przeliczone na %: 
-                // x: 48.5 (anchor) - 2% (offset w lewo) = 46.5%
-                // y: 37.5 (anchor) + 14.6% (tip offset 140px/960px) = 52.1%
                 x: '46%',
                 y: '50%'
               }}
@@ -276,7 +338,19 @@ function About({ externalOpacity }) {
             />
           )}
         </AnimatePresence>
-      </div>
+      </motion.div>
+
+      {/* Subtle interactive micro-hint above bottom fan bar */}
+      {!hasInteracted && !activeInfo && (
+        <motion.div
+          className="about-stage-hint"
+          style={{ opacity: hintOpacity, y: hintY }}
+          aria-hidden="true"
+        >
+          <span className="about-stage-hint-dot" />
+          <span>POCIĄGNIJ DREDY, ABY POZNAĆ HISTORIĘ</span>
+        </motion.div>
+      )}
 
       {/* 3. WARSTWA WIERZCHNIA: DYMEK */}
       <AnimatePresence>

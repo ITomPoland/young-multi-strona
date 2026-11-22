@@ -58,8 +58,7 @@ const albums = [
   },
 ];
 
-function Gramophone({ contentProgress, isMenuOpen, style, zoomTargetRef }) {
-
+function Gramophone({ contentProgress, isMenuOpen, style }) {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -69,37 +68,26 @@ function Gramophone({ contentProgress, isMenuOpen, style, zoomTargetRef }) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const perspectiveProgress = useTransform(
-    contentProgress,
-    [0.59, 0.65],
-    [0, 1]
-  );
+  // === OPTION A: CARDS SCATTER & STAGE BLACKOUT ===
+  const scatterProgress = useTransform(contentProgress, [0.57, 0.69], [0, 1]);
 
-  // === POPRAWKA 3D DLA MOBILE ===
-  // Na desktopie: mocny skos (-25deg).
-  // Na mobile: delikatny skos (-10deg) lub prawie brak, żeby treść się mieściła.
+  // 3D world breathes gently as cards separate
   const skewX3D = isMobile ? 0 : -25;
   const skewY3D = isMobile ? 0 : 7;
   const scale3D = isMobile ? 1 : 0.85;
 
-  const skewX2D = 0;
-  const skewY2D = 0;
-  const scale2D = 1;
+  const skewX = useTransform(scatterProgress, [0, 1], [skewX3D, isMobile ? 0 : -8]);
+  const skewY = useTransform(scatterProgress, [0, 1], [skewY3D, isMobile ? 0 : 2]);
+  const worldScale = useTransform(scatterProgress, [0, 1], [scale3D, isMobile ? 0.94 : 0.78]);
+  const bgGridScale = useTransform(scatterProgress, [0, 1], [scale3D, isMobile ? 0.9 : 0.72]);
 
-  const skewX = useTransform(perspectiveProgress, [0, 1], [skewX3D, skewX2D]);
-  const skewY = useTransform(perspectiveProgress, [0, 1], [skewY3D, skewY2D]);
-  const scale = useTransform(perspectiveProgress, [0, 1], [scale3D, scale2D]);
+  // Heading floats upward & vanishes cleanly before About rises
+  const titleY = useTransform(contentProgress, [0.57, 0.64], [0, -110]);
+  const titleOpacity = useTransform(contentProgress, [0.57, 0.635], [1, 0]);
+  const titleScale = useTransform(contentProgress, [0.57, 0.64], [1, 0.92]);
 
-  const flipProgress = useTransform(
-    contentProgress,
-    [0.61, 0.65],
-    [0, 1]
-  );
-
-  const flipRotationY = useTransform(flipProgress, [0, 1], [0, 180]);
-  const backFaceRotationY = useTransform(flipRotationY, (ry) => ry - 180);
-  const frontOpacity = useTransform(flipProgress, [0, 0.5, 1], [1, 1, 0]);
-  const backOpacity = useTransform(flipProgress, [0, 0.5, 1], [0, 0, 1]);
+  // Smooth architectural-grid -> concert-stage blackout veil
+  const blackoutOpacity = useTransform(contentProgress, [0.585, 0.675], [0, 1]);
 
   return (
     <motion.div
@@ -109,9 +97,9 @@ function Gramophone({ contentProgress, isMenuOpen, style, zoomTargetRef }) {
       <motion.div
         className="gramophone-background-boxes"
         style={{
-          skewX: skewX,
-          skewY: skewY,
-          scale: scale,
+          skewX,
+          skewY,
+          scale: bgGridScale,
           x: '0%',
           y: '0%',
           z: 0,
@@ -124,27 +112,30 @@ function Gramophone({ contentProgress, isMenuOpen, style, zoomTargetRef }) {
       <motion.div
         className="gramophone-content-world"
         style={{
-          skewX: skewX,
-          skewY: skewY,
-          scale: scale,
+          skewX,
+          skewY,
+          scale: worldScale,
           x: '0%',
-          willChange: 'transform' // Ensure 3D transforms are GPU accelerated
+          willChange: 'transform'
         }}
       >
-        <h2 className="gramophone-title-static">
+        <motion.h2
+          className="gramophone-title-static"
+          style={{ y: titleY, opacity: titleOpacity, scale: titleScale }}
+        >
           DYSKOGRAFIA
-        </h2>
+        </motion.h2>
 
         <ScrollStack
           className="gramophone-scroller"
           itemDistance={20}
-          // Na mobile karty muszą być bliżej siebie w pionie
           itemStackDistance={isMobile ? 40 : 20}
           baseScale={0.9}
-          stackPosition={isMobile ? "0%" : "0%"}
-          // Na mobile startujemy ciut niżej, żeby nie zasłaniać tytułu
-          scaleEndPosition={isMobile ? "80%" : "80%"}
+          stackPosition="0%"
+          scaleEndPosition="80%"
           scrollProgress={contentProgress}
+          scatterProgress={scatterProgress}
+          isMenuOpen={isMenuOpen}
         >
           {albums.map((album) => (
             <ScrollStackItem
@@ -163,47 +154,15 @@ function Gramophone({ contentProgress, isMenuOpen, style, zoomTargetRef }) {
                 </div>
 
                 <div className="album-cover">
-                  {album.id === 4 ? (
-                    <div className="album-cover-flip-container">
-                      <motion.div
-                        className="album-cover-flip-front"
-                        style={{ rotateY: flipRotationY, opacity: frontOpacity }}
-                      >
-                        <img srcSet={album.srcset} src={album.fallback} sizes="(max-width: 768px) 40vw, 20vw" alt={album.title} loading="lazy" />
-                      </motion.div>
-                      <motion.div
-                        className="album-cover-flip-back"
-                        style={{
-                          rotateY: backFaceRotationY,
-                          opacity: backOpacity,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}
-                      >
-                      </motion.div>
-
-                      {/* === CELOWNIK POZA ROTACJĄ 3D === */}
-                      {/* Dzięki temu, że jest w 2D, jego środek NIGDY nie ulega zniekształceniu perspektywą 3D podczas obrotu. */}
-                      <div
-                        ref={zoomTargetRef}
-                        style={{
-                          position: 'absolute',
-                          top: '50%',
-                          left: '50%',
-                          width: '10px',
-                          height: '10px',
-                          transform: 'translate(-50%, -50%)',
-                          background: 'transparent',
-                          pointerEvents: 'none'
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="album-cover-standard-container">
-                      <img srcSet={album.srcset} src={album.fallback} sizes="(max-width: 768px) 40vw, 20vw" alt={album.title} loading="lazy" />
-                    </div>
-                  )}
+                  <div className="album-cover-standard-container">
+                    <img
+                      srcSet={album.srcset}
+                      src={album.fallback}
+                      sizes="(max-width: 768px) 40vw, 20vw"
+                      alt={album.title}
+                      loading="lazy"
+                    />
+                  </div>
                 </div>
 
                 <div className="album-tracklist">
@@ -217,6 +176,13 @@ function Gramophone({ contentProgress, isMenuOpen, style, zoomTargetRef }) {
           ))}
         </ScrollStack>
       </motion.div>
+
+      {/* Stage blackout veil melting the white architectural grid into pure stage black */}
+      <motion.div
+        className="gramophone-blackout-veil"
+        style={{ opacity: blackoutOpacity }}
+        aria-hidden="true"
+      />
     </motion.div>
   );
 }

@@ -1,7 +1,13 @@
 // Plik: /src/components/Hero/Hero.jsx
 
 import React, { useState, useEffect, forwardRef } from 'react';
-import { motion, useTransform, useMotionValue, useSpring } from 'framer-motion';
+import {
+  motion,
+  useTransform,
+  useMotionValue,
+  useSpring,
+  useMotionTemplate
+} from 'framer-motion';
 import './Hero.css';
 
 // Responsive image imports with srcset
@@ -17,25 +23,28 @@ const Hero = forwardRef(function Hero({ scrollY, startAnimation = false }, ref) 
     mass: 1
   });
 
-  const [windowWidth, setWindowWidth] = useState(1200);
+  const [viewport, setViewport] = useState({ width: 1200, height: 900 });
 
   useEffect(() => {
-    setWindowWidth(window.innerWidth);
-
-    const handleResize = () => {
-      setWindowWidth(window.innerWidth);
+    const updateViewport = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
     };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
   }, []);
 
-  const isMobile = windowWidth <= 768;
+  const isMobile = viewport.width <= 768;
 
-  const xYoung = useTransform(smoothMouseX, [0, windowWidth], [50, -50]);
-  const xMulti = useTransform(smoothMouseX, [0, windowWidth], [-50, 50]);
+  const xYoung = useTransform(smoothMouseX, [0, viewport.width], [50, -50]);
+  const xMulti = useTransform(smoothMouseX, [0, viewport.width], [-50, 50]);
 
-  const y = useTransform(scrollY, [0, 1000], [0, -150]);
+  // Exact pixel sync with NewSong's 0..0.095 WebGL reveal (0.095 * 11.5vh = 1.0925vh)
+  const revealDistance = Math.max(viewport.height * 1.0925, 650);
+  const y = useTransform(scrollY, [0, revealDistance], [0, -85]);
+  const scale = useTransform(scrollY, [0, revealDistance], [1, 1.08]);
+  const brightness = useTransform(scrollY, [0, revealDistance], [1, 0.35]);
+  const filter = useMotionTemplate`brightness(${brightness})`;
 
   const handleMouseMove = (e) => {
     mouseX.set(e.clientX);
@@ -48,14 +57,15 @@ const Hero = forwardRef(function Hero({ scrollY, startAnimation = false }, ref) 
       data-header-theme="light"
       onMouseMove={handleMouseMove}
     >
-      <motion.div className="hero-content-wrapper" style={{ y }}>
-
+      <motion.div
+        className="hero-content-wrapper"
+        style={{ y, scale, filter }}
+      >
         <motion.img
           src="/multiztlem.avif"
           alt="Tło"
           className="hero-background-image"
           fetchPriority="high"
-          // ZMIANA: opacity 0.01 zamiast 0, żeby zmusić przeglądarkę do wyrenderowania tego pod spodem
           initial={{ opacity: 0.01, scale: 1.15 }}
           animate={startAnimation ? { opacity: 1, scale: 1 } : { opacity: 0.01, scale: 1.15 }}
           transition={{ duration: 1.5, delay: 0.1, ease: [0.76, 0, 0.24, 1] }}
@@ -66,7 +76,7 @@ const Hero = forwardRef(function Hero({ scrollY, startAnimation = false }, ref) 
             srcSet={cutoutPersonSrcset}
             src={cutoutPersonFallback}
             sizes="(max-width: 768px) 100vw, 50vw"
-            alt="Artysta"
+            alt="Young Multi"
             className="hero-cutout-image"
             fetchPriority="high"
             initial={{ opacity: 0.01, scale: 1.1, y: 50 }}
@@ -102,7 +112,6 @@ const Hero = forwardRef(function Hero({ scrollY, startAnimation = false }, ref) 
         >
           MULTI
         </motion.h2>
-
       </motion.div>
     </motion.section>
   );

@@ -6,27 +6,62 @@ import {
   useMotionValueEvent,
   useMotionTemplate,
   useSpring,
-  useMotionValue,
-  animate
+  useMotionValue
 } from 'framer-motion';
 import './NewSong.css';
+import HeroWebGLTransition from '../Hero/HeroWebGLTransition';
+import GlitchTearWebGL from './GlitchTearWebGL';
 import Gramophone from '../Gramophone/Gramophone';
 import About from '../About/About';
 import SmokeTransition from '../SmokeTransition/SmokeTransition';
 
+const LATEST_RELEASE = {
+  titleLine1: 'ZA KAŻDYM',
+  titleLine2: 'RA2EM',
+  fullTitle: 'ZA KAŻDYM RA2EM',
+  artists: 'YOUNG MULTI FT. JULA',
+  album: 'LOST MEDIA',
+  releaseDate: '19.11.2026',
+  albumDate: '11.12.2026',
+  producers: 'KUBI PRODUCENT & MARCELI',
+  youtubeId: 'KMQQtlTJvMo',
+  youtubeUrl: 'https://www.youtube.com/watch?v=KMQQtlTJvMo',
+  smartLink: 'https://yfl.lnk.to/ZAKAZDYMRA2EM',
+  platforms: [
+    {
+      id: 'spotify',
+      name: 'SPOTIFY',
+      url: 'https://yfl.lnk.to/ZAKAZDYMRA2EM',
+      accent: '#1DB954'
+    },
+    {
+      id: 'apple',
+      name: 'APPLE MUSIC',
+      url: 'https://music.apple.com/pl/album/za-ka%C5%BCdym-ra2em-single/1852927950',
+      accent: '#FC3C44'
+    },
+    {
+      id: 'ytmusic',
+      name: 'YOUTUBE MUSIC',
+      url: 'https://music.youtube.com/watch?v=KMQQtlTJvMo',
+      accent: '#FF2020'
+    },
+    {
+      id: 'tidal',
+      name: 'TIDAL',
+      url: 'https://yfl.lnk.to/ZAKAZDYMRA2EM',
+      accent: '#00F0FF'
+    }
+  ]
+};
+
 const NewSong = forwardRef((props, ref) => {
   const scrollRef = useRef(null);
+  const revealClipRef = useRef(null);
+  const gramophoneLayerRef = useRef(null);
   const previousThemeRef = useRef(null);
+  const [hoveredAccent, setHoveredAccent] = useState(null);
 
-  // === SNAJPER ===
-  const zoomTargetRef = useRef(null);
-  // Stabilizacja: Zakładamy, że celownik jest ZAWSZE na środku ekranu (0.5, 0.5).
-  // Dynamiczne mierzenie (getBoundingClientRect) powodowało błędy przy szybkim scrollu/skokach w menu.
-  const originX = useMotionValue(0.5);
-  const originY = useMotionValue(0.5); // ZMIANA: Startujemy od środka (było 0.78)
-  const calculatedOrigin = useMotionTemplate`${useTransform(originX, x => x * 100)}% ${useTransform(originY, y => y * 100)}%`;
-
-  // --- RESPANSYWNOŚĆ ---
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     setIsMobile(window.innerWidth < 768);
@@ -35,118 +70,85 @@ const NewSong = forwardRef((props, ref) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // === LOGIKA LATARKI ===
-  const mouseX = useMotionValue(50);
-  const mouseY = useMotionValue(40);
-  const spotlightColor = useMotionValue('rgba(255, 255, 255, 0.05)');
-  const spotlightSize = useSpring(40, { damping: 20, stiffness: 100 });
+  // Mouse parallax for kinetic brutalist typography & cinema viewport
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const smoothMX = useSpring(mouseX, { stiffness: 90, damping: 22 });
+  const smoothMY = useSpring(mouseY, { stiffness: 90, damping: 22 });
 
-  const springConfig = { damping: 25, stiffness: 150, mass: 0.5 };
-  const smoothX = useSpring(mouseX, springConfig);
-  const smoothY = useSpring(mouseY, springConfig);
+  const typeLeftX = useTransform(smoothMX, [-0.5, 0.5], [-18, 18]);
+  const typeRightX = useTransform(smoothMX, [-0.5, 0.5], [18, -18]);
+  const frameTiltX = useTransform(smoothMY, [-0.5, 0.5], [5, -5]);
+  const frameTiltY = useTransform(smoothMX, [-0.5, 0.5], [-6, 6]);
 
-  const spotlightBackground = useMotionTemplate`radial-gradient(circle at ${smoothX}% ${smoothY}%, 
-    ${spotlightColor} 0%, 
-    rgba(0, 0, 0, 0.9) ${spotlightSize}%, 
-    rgba(20, 0, 0, 0.4) 100%)`;
-
-  const handleSpotlightHover = (color) => {
-    spotlightColor.set(color);
-    spotlightSize.set(25);
+  const handlePanelMouseMove = (e) => {
+    if (isMobile) return;
+    mouseX.set(e.clientX / window.innerWidth - 0.5);
+    mouseY.set(e.clientY / window.innerHeight - 0.5);
   };
 
-  const handleSpotlightLeave = () => {
-    spotlightColor.set('rgba(255, 255, 255, 0.05)');
-    spotlightSize.set(40);
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      const xPct = (e.clientX / window.innerWidth) * 100;
-      const yPct = (e.clientY / window.innerHeight) * 100;
-      mouseX.set(xPct);
-      mouseY.set(yPct);
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [mouseX, mouseY]);
-
-  // --- GŁÓWNE ANIMACJE SCROLLA ---
+  // --- TIGHT, ZERO-DEAD-SCROLL TIMELINE (1250vh) ---
+  // 0.000 -> 0.095 : Hero -> NewSong WebGL Liquid Chrome Portal
+  // 0.095 -> 0.135 : Crisp breath on full ZA KAŻDYM RA2EM poster
+  // 0.135 -> 0.255 : WebGL Lost Media VHS Rewind + -25deg Diagonal Glitch Tear -> Discography
+  // 0.260 -> 0.560 : 4 Album Cards ScrollStack
+  // 0.570 -> 0.740 : Option A: Cards Scatter + Rising Stage (About)
+  // 0.840 -> 1.000 : SmokeTransition -> Merch
   const { scrollYProgress: contentProgress } = useScroll({
-    target: scrollRef, offset: ["start start", "end end"]
+    target: scrollRef,
+    offset: ['start start', 'end end']
   });
 
-  // Logika zmiany motywu (stara - zachowana dla kompatybilności)
-  useMotionValueEvent(contentProgress, "change", (latest) => {
+  useMotionValueEvent(contentProgress, 'change', (latest) => {
     if (typeof props.setHeaderTheme === 'function') {
       if (latest < 0.05) {
         previousThemeRef.current = null;
         return;
       }
-      const newTheme = latest > 0.75 ? 'dark' : 'light';
+      const newTheme = latest > 0.65 ? 'dark' : 'light';
       if (previousThemeRef.current !== newTheme) {
         previousThemeRef.current = newTheme;
         props.setHeaderTheme(newTheme);
       }
     }
-
-    // Logika celowania - DYNAMIC TRACKING (Zoptymalizowana: pomiar tylko raz, po zakończeniu ruchu)
-    // Karty kończą ruch przy latest = 0.60 (ponieważ stackProgress mapuje 0.35-0.6 -> 0-1)
-    if (latest >= 0.60 && latest < 0.649 && zoomTargetRef.current && !zoomTargetRef.current.dataset.measured) {
-      const rect = zoomTargetRef.current.getBoundingClientRect();
-      const windowWidth = window.innerWidth;
-      const windowHeight = window.innerHeight;
-
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-
-      // Usunięto sztuczne offsety - pozycjonowanie jest teraz idealne 1:1 ze środkiem karty
-      const newX = (centerX / windowWidth);
-      const newY = (centerY / windowHeight);
-
-      originX.set(newX);
-      originY.set(newY);
-
-      zoomTargetRef.current.dataset.measured = "true";
-    }
-    // 2. Fallback dla strzału z menu (Teleport za 0.65)
-    else if (latest >= 0.65 && zoomTargetRef.current && !zoomTargetRef.current.dataset.measured) {
-      // Teleport: Używamy "idealnego środka" (z offsetem)
-      originX.set(0.509);
-      originY.set(0.55);
-      zoomTargetRef.current.dataset.measured = "true";
-    }
-    // 3. Reset
-    else if (latest < 0.5 && zoomTargetRef.current?.dataset.measured) {
-      delete zoomTargetRef.current.dataset.measured;
-    }
   });
 
-  // --- SEKWENCJA RUCHU ---
-  const textY = useTransform(contentProgress, [0, 0.07], ["0vh", isMobile ? "-18vh" : "-25vh"]);
-  const videoY = useTransform(contentProgress, [0, 0.07], ["100vh", isMobile ? "0vh" : "15vh"]);
-  const videoScale = useTransform(contentProgress, [0.08, 0.12], [1, 0.9]);
-  const videoX = useTransform(contentProgress, [0.08, 0.12], ["0%", isMobile ? "0%" : "-40%"]);
-  const linksOpacity = useTransform(contentProgress, [0.13, 0.18], [0, 1]);
-  const linksX = useTransform(contentProgress, [0.13, 0.18], isMobile ? ["0%", "0%"] : ["50vw", "15vw"]);
-  const linksY = useTransform(contentProgress, [0.13, 0.18], isMobile ? ["80vh", "30vh"] : ["15vh", "15vh"]);
-  const trackX = useTransform(contentProgress, [0.20, 0.24, 0.35, 1.0], ["0%", "0%", "-50%", "-50%"]);
+  // === 1. HERO -> NEWSONG WEBGL LIQUID PORTAL (0.00 -> 0.095) ===
+  const webglRevealProgress = useTransform(contentProgress, [0.0, 0.095], [0, 1]);
+  const viewportPointerEvents = useTransform(contentProgress, (v) => (v >= 0.045 ? 'auto' : 'none'));
 
-  // --- GRAMOPHONE & ABOUT & SMOKE ---
-  const gramophoneZoomProgress = useTransform(contentProgress, [0.65, 0.85], [0, 1]);
-  const gramophoneScale = 1;
-  // Dynamiczna pozycja startowa dla clipPath (podąża za celownikiem "Snajper")
-  // Offset proporcjonalny do viewportu zamiast hardcoded stałych
-  const originXPct = useTransform(originX, v => v * 100);
-  const originYPct = useTransform(originY, v => v * 100);
-  const clipRadius = useTransform(gramophoneZoomProgress, [0.05, 1], [0, 150]);
+  // Dynamic entrance happening LIVE under the rising WebGL wave
+  const bgScale = useTransform(contentProgress, [0.0, 0.11, 0.25], [1.22, 1.03, 1.12]);
+  const bgBrightness = useTransform(contentProgress, [0.0, 0.09, 0.14, 0.24], [0.42, 0.82, 0.82, 0.55]);
+  const bgFilter = useMotionTemplate`brightness(${bgBrightness}) contrast(1.08)`;
 
-  const aboutClipPath = useMotionTemplate`circle(${clipRadius}% at ${originXPct}% ${originYPct}%)`;
-  const aboutOpacity = useTransform(gramophoneZoomProgress, [0, 0.001], [0, 1]);
-  const aboutPointerEvents = useTransform(gramophoneZoomProgress, (v) => (v > 0.1 ? 'auto' : 'none'));
-  const cloudProgress = useTransform(contentProgress, [0.85, 1.0], [0, 1]);
-  const smokeZIndex = useTransform(contentProgress, [0, 0.8, 0.81, 1], [0, 0, 100, 100]);
-  const smokeOpacity = useTransform(contentProgress, [0.7, 0.8], [0, 1]);
+  const titleTopX = useTransform(contentProgress, [0.01, 0.10, 0.14, 0.25], ['-6%', '0%', '0%', '-10%']);
+  const titleBottomX = useTransform(contentProgress, [0.01, 0.10, 0.14, 0.25], ['6%', '0%', '0%', '10%']);
+  const titleOpacity = useTransform(contentProgress, [0.01, 0.09], [0.25, 1]);
+
+  const videoCardY = useTransform(contentProgress, [0.01, 0.095], [70, 0]);
+  const videoCardScale = useTransform(contentProgress, [0.01, 0.095, 0.14, 0.25], [0.9, 1, 1, 1.06]);
+  const railY = useTransform(contentProgress, [0.03, 0.10], [28, 0]);
+  const railOpacity = useTransform(contentProgress, [0.03, 0.095, 0.14, 0.21], [0, 1, 1, 0]);
+
+  // Smooth exit scale/pointer handoff on the outgoing dark poster (zero shaky skew)
+  const posterLayerPointerEvents = useTransform(contentProgress, (v) => (v >= 0.045 && v < 0.19 ? 'auto' : 'none'));
+
+  // === 2. NEWSONG -> DISCOGRAPHY: -25deg DIAGONAL CHROME APERTURE (0.135 -> 0.25) ===
+  const glitchTearProgress = useTransform(contentProgress, [0.135, 0.25], [0, 1]);
+  const gramophoneEntranceScale = useTransform(contentProgress, [0.135, 0.25], [1.07, 1]);
+
+  // === 3. OPTION A: CARDS SCATTER -> RISING STAGE (ABOUT) ===
+  const aboutEnterProgress = useTransform(contentProgress, [0.61, 0.75], [0, 1]);
+  const aboutLayerOpacity = useTransform(contentProgress, [0.605, 0.64], [0, 1]);
+  const aboutPointerEvents = useTransform(contentProgress, (v) => (v >= 0.67 ? 'auto' : 'none'));
+
+  // === 4. SMOKE TRANSITION INTO MERCH (0.84 -> 1.0) ===
+  const cloudProgress = useTransform(contentProgress, [0.84, 1.0], [0, 1]);
+  const smokeZIndex = useTransform(contentProgress, [0, 0.79, 0.80, 1], [0, 0, 100, 100]);
+  const smokeOpacity = useTransform(contentProgress, [0.77, 0.84], [0, 1]);
+
+  const thumbUrl = `https://img.youtube.com/vi/${LATEST_RELEASE.youtubeId}/maxresdefault.jpg`;
 
   return (
     <motion.section
@@ -159,240 +161,156 @@ const NewSong = forwardRef((props, ref) => {
       className="newsong-section"
       data-header-theme="dark"
     >
-      <div className="newsong-sticky-viewport">
+      <motion.div
+        className="newsong-sticky-viewport"
+        style={{ pointerEvents: viewportPointerEvents }}
+      >
+        {/* Clipped container revealed live underneath the Hero molten WebGL frontier */}
+        <div ref={revealClipRef} className="newsong-reveal-clip">
 
-        {/* Forces GPU layer for the track */}
-        <motion.div
-          className="newsong-train-track"
-          style={{ x: trackX, willChange: 'transform' }}
-        >
-
-          {/* PANEL 1: NEW SONG */}
-          <div className="newsong-panel">
-
-            {/* TŁO INDUSTRIAL */}
-            <div className="industrial-bg">
-              <div className="noise-overlay"></div>
-              <div className="grid-overlay"></div>
-              <motion.div
-                className="spotlight"
-                style={{ background: spotlightBackground }}
-              />
-            </div>
-
-            {/* TYTUŁ */}
+          {/* LAYER 1: FULL-BLEED BRUTALIST EDITORIAL POSTER (ZA KAŻDYM RA2EM) */}
+          <motion.div
+            className="newsong-panel"
+            onMouseMove={handlePanelMouseMove}
+            style={{
+              '--release-accent': hoveredAccent || '#ff2a2a',
+              pointerEvents: posterLayerPointerEvents
+            }}
+          >
             <motion.div
-              className="newsong-text-wrapper"
-              style={{ y: textY, willChange: 'transform' }}
+              className="poster-bg-layer"
+              style={{ scale: bgScale, filter: bgFilter, willChange: 'transform, filter' }}
+              aria-hidden="true"
             >
-              <h2 className="newsong-title">GDZIE MOJ DOM</h2>
-              <p className="newsong-subtitle">OUT NOW • STREAMING EVERYWHERE</p>
+              <img src={thumbUrl} alt="" className="poster-bg-img" />
             </motion.div>
 
-            {/* WIDEO */}
-            <motion.a
-              className="video-container"
-              style={{ y: videoY, x: videoX, scale: videoScale, willChange: 'transform' }}
-              href="https://www.youtube.com/watch?v=A0I1MrojmJE"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Obejrzyj teledysk Gdzie Mój Dom na YouTube"
-            >
-              <div className="tech-corner tl"></div>
-              <div className="tech-corner br"></div>
-              <div className="rec-label">● REC</div>
+            <div className="poster-vignette" aria-hidden="true" />
+            <div className="poster-accent-wash" aria-hidden="true" />
+            <div className="noise-overlay" aria-hidden="true" />
 
-              <div className="video-thumbnail-wrapper">
+            <div className="poster-type-stage" aria-hidden="true">
+              <motion.div
+                className="poster-type-row poster-type-top"
+                style={{ x: isMobile ? 0 : typeLeftX, opacity: titleOpacity }}
+              >
+                <motion.span style={{ x: titleTopX }}>{LATEST_RELEASE.titleLine1}</motion.span>
+              </motion.div>
+              <motion.div
+                className="poster-type-row poster-type-bottom"
+                style={{ x: isMobile ? 0 : typeRightX, opacity: titleOpacity }}
+              >
+                <motion.span style={{ x: titleBottomX }}>{LATEST_RELEASE.titleLine2}</motion.span>
+              </motion.div>
+            </div>
+
+            <motion.div
+              className="poster-video-anchor"
+              style={{ y: videoCardY, scale: videoCardScale, willChange: 'transform' }}
+            >
+              <motion.a
+                href={LATEST_RELEASE.youtubeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="poster-video-frame"
+                aria-label={`Obejrzyj teledysk ${LATEST_RELEASE.artists} — ${LATEST_RELEASE.fullTitle} na YouTube`}
+                style={{
+                  rotateX: isMobile ? 0 : frameTiltX,
+                  rotateY: isMobile ? 0 : frameTiltY,
+                  transformPerspective: 1200
+                }}
+              >
                 <img
-                  src="https://img.youtube.com/vi/A0I1MrojmJE/maxresdefault.jpg"
-                  className="video-thumb-img"
-                  alt="Miniatura teledysku Gdzie Mój Dom — Young Multi"
+                  src={thumbUrl}
+                  alt={`${LATEST_RELEASE.artists} — ${LATEST_RELEASE.fullTitle}`}
+                  className="poster-video-img"
                   loading="lazy"
                   width="1280"
                   height="720"
                 />
-
-                <div className="play-button">
-                  <div className="play-icon"></div>
+                <div className="poster-video-scrim" />
+                <div className="poster-video-cta">
+                  <span className="poster-video-cta-label">OBEJRZYJ TELEDYSK</span>
+                  <span className="poster-video-cta-arrow" aria-hidden="true">↗</span>
                 </div>
-              </div>
-            </motion.a>
-
-            {/* LINKI */}
-            <motion.div
-              className="links-container"
-              style={{ opacity: linksOpacity, x: linksX, y: linksY, willChange: 'transform, opacity' }}
-            >
-              <InteractiveLink
-                name="SPOTIFY"
-                url="https://open.spotify.com/album/3ex3T8zjsgKoSP9ajrXv2l"
-                baseColor="#1DB954"
-                onHoverStart={() => handleSpotlightHover('rgba(29, 185, 84, 0.3)')}
-                onHoverEnd={handleSpotlightLeave}
-              />
-              <InteractiveLink
-                name="APPLE MUSIC"
-                url="https://music.apple.com/us/album/gdzie-m%C3%B3j-dom-single/1845163826"
-                baseColor="#FC3C44"
-                onHoverStart={() => handleSpotlightHover('rgba(252, 60, 68, 0.3)')}
-                onHoverEnd={handleSpotlightLeave}
-              />
-              <InteractiveLink
-                name="YOUTUBE MUSIC"
-                url="https://music.youtube.com/playlist?list=OLAK5uy_mvis9FVMPeX96gbKtOFgWsjlooaX5ty_M"
-                baseColor="#FF0000"
-                onHoverStart={() => handleSpotlightHover('rgba(255, 0, 0, 0.3)')}
-                onHoverEnd={handleSpotlightLeave}
-              />
-              <InteractiveLink
-                name="TIDAL"
-                url="https://tidal.com/album/463841952"
-                baseColor="#00FFFF"
-                onHoverStart={() => handleSpotlightHover('rgba(0, 255, 255, 0.3)')}
-                onHoverEnd={handleSpotlightLeave}
-              />
+              </motion.a>
             </motion.div>
 
+            <motion.div
+              className="poster-bottom-rail"
+              style={{ y: railY, opacity: railOpacity }}
+            >
+              <div className="poster-meta-block">
+                <h2 className="poster-sr-heading">{LATEST_RELEASE.artists} — {LATEST_RELEASE.fullTitle}</h2>
+                <span className="poster-meta-primary">{LATEST_RELEASE.artists}</span>
+                <span className="poster-meta-sub">
+                  {LATEST_RELEASE.album} ({LATEST_RELEASE.albumDate}) • PROD. {LATEST_RELEASE.producers}
+                </span>
+              </div>
+
+              <nav className="poster-stream-nav" aria-label="Platformy streamingowe">
+                {LATEST_RELEASE.platforms.map((p) => (
+                  <a
+                    key={p.id}
+                    href={p.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="poster-stream-link"
+                    style={{ '--link-accent': p.accent }}
+                    onMouseEnter={() => setHoveredAccent(p.accent)}
+                    onMouseLeave={() => setHoveredAccent(null)}
+                  >
+                    <span>{p.name}</span>
+                    <span className="poster-stream-arrow" aria-hidden="true">↗</span>
+                  </a>
+                ))}
+              </nav>
+            </motion.div>
+          </motion.div>
+
+          {/* LAYER 2: GRAMOPHONE / DISCOGRAPHY (Revealed inside the -25deg Glitch Tear!) */}
+          <div ref={gramophoneLayerRef} className="newsong-gramophone-layer">
+            <Gramophone
+              contentProgress={contentProgress}
+              isMenuOpen={props.isMenuOpen}
+              style={{ scale: gramophoneEntranceScale, willChange: 'transform' }}
+            />
           </div>
 
-          {/* PANEL 2: GRAMOPHONE */}
-          <Gramophone
-            contentProgress={contentProgress}
-            isMenuOpen={props.isMenuOpen}
-            zoomTargetRef={zoomTargetRef}
-            style={{
-              scale: gramophoneScale,
-              transformOrigin: calculatedOrigin,
-              willChange: 'transform' // Critical for the big zoom
-            }}
+          {/* Synchronized WebGL Lost Media VHS Rewind + -25deg Glitch Tear Overlay */}
+          <GlitchTearWebGL
+            progress={glitchTearProgress}
+            targetRef={gramophoneLayerRef}
           />
-        </motion.div>
 
-        {/* WARSTWY DODATKOWE (About, Smoke) */}
-        <motion.div
-          className="newsong-about-layer"
-          style={{
-            opacity: aboutOpacity,
-            clipPath: aboutClipPath,
-            pointerEvents: aboutPointerEvents,
-            willChange: 'clip-path, opacity' // Critical for the circle reveal
-          }}
-        >
-          <About externalOpacity={aboutOpacity} />
-        </motion.div>
+          {/* LAYER 3: RISING STAGE (ABOUT) */}
+          <motion.div
+            className="newsong-about-layer"
+            style={{
+              opacity: aboutLayerOpacity,
+              pointerEvents: aboutPointerEvents,
+              willChange: 'opacity'
+            }}
+          >
+            <About enterProgress={aboutEnterProgress} />
+          </motion.div>
 
-        <motion.div
-          style={{
-            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-            pointerEvents: 'none', zIndex: smokeZIndex, opacity: smokeOpacity, mixBlendMode: 'screen'
-          }}
-        >
-          <SmokeTransition progress={cloudProgress} />
-        </motion.div>
+          {/* LAYER 4: SMOKE TRANSITION INTO MERCH */}
+          <motion.div
+            style={{
+              position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+              pointerEvents: 'none', zIndex: smokeZIndex, opacity: smokeOpacity, mixBlendMode: 'screen'
+            }}
+          >
+            <SmokeTransition progress={cloudProgress} />
+          </motion.div>
+        </div>
 
-      </div>
+        {/* Synchronized WebGL Hero -> NewSong Molten Chrome Frontier Ribbon */}
+        <HeroWebGLTransition progress={webglRevealProgress} targetRef={revealClipRef} />
+      </motion.div>
     </motion.section>
   );
 });
-
-// === INTERACTIVE LINK COMPONENT ===
-const InteractiveLink = ({ name, url, baseColor, onHoverStart, onHoverEnd }) => {
-  const [displayName, setDisplayName] = useState(name);
-  const [isAnimating, setIsAnimating] = useState(false);
-
-  const linkRef = useRef(null);
-  const rectRef = useRef(null); // Cache dla rect
-  const magneticX = useMotionValue(0);
-  const magneticY = useMotionValue(0);
-  const springX = useSpring(magneticX, { damping: 15, stiffness: 150 });
-  const springY = useSpring(magneticY, { damping: 15, stiffness: 150 });
-
-  const scrambleText = async () => {
-    if (isAnimating) return;
-    setIsAnimating(true);
-
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&@';
-    const originalName = name;
-    const iterations = 15;
-
-    for (let i = 0; i < iterations; i++) {
-      await new Promise(resolve => setTimeout(resolve, 30));
-
-      if (i < iterations - 5) {
-        setDisplayName(
-          originalName.split('').map((char) =>
-            char === ' ' ? ' ' : chars[Math.floor(Math.random() * chars.length)]
-          ).join('')
-        );
-      } else {
-        const revealIndex = Math.floor((i - (iterations - 5)) / 5 * originalName.length);
-        setDisplayName(
-          originalName.split('').map((char, idx) =>
-            idx <= revealIndex ? char : (char === ' ' ? ' ' : chars[Math.floor(Math.random() * chars.length)])
-          ).join('')
-        );
-      }
-    }
-
-    setDisplayName(originalName);
-    setIsAnimating(false);
-  };
-
-  const handleMouseEnter = () => {
-    if (linkRef.current) {
-      rectRef.current = linkRef.current.getBoundingClientRect();
-    }
-    scrambleText();
-    onHoverStart?.();
-  };
-
-  const handleMouseMove = (e) => {
-    if (!rectRef.current) return;
-
-    const rect = rectRef.current;
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-
-    const deltaX = (e.clientX - centerX) * 0.2;
-    const deltaY = (e.clientY - centerY) * 0.2;
-
-    magneticX.set(deltaX);
-    magneticY.set(deltaY);
-  };
-
-  const handleMouseLeave = () => {
-    magneticX.set(0);
-    magneticY.set(0);
-    setDisplayName(name);
-    setIsAnimating(false);
-    onHoverEnd?.();
-  };
-
-  return (
-    <motion.a
-      ref={linkRef}
-      href={url}
-      className="streaming-link"
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{ x: springX, y: springY }}
-      onMouseEnter={handleMouseEnter}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-    >
-      <motion.div
-        className="btn-glow"
-        style={{
-          backgroundColor: baseColor,
-          opacity: 0
-        }}
-        whileHover={{ opacity: 0.15 }}
-        transition={{ duration: 0.3 }}
-      />
-      <span>{displayName}</span>
-      <span className="link-arrow">↗</span>
-    </motion.a>
-  );
-};
 
 export default NewSong;

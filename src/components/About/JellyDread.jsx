@@ -16,6 +16,8 @@ const CANVAS_CENTER = 500;
 
 export function JellyDread({
   dreadId,
+  dreadIndex = 0,
+  swaySignal = 0,
   onDragReport,
   onDragStart,
   onDragEnd,
@@ -98,6 +100,34 @@ export function JellyDread({
     };
   }, [ghostOffset, anchorX, anchorY, initialTipY, tipX, tipY, handleX, handleY]);
 
+  // === RISING STAGE MOMENTUM SWAY ===
+  // Organic physical sway cascade across dreads when Multi emerges onto the stage
+  useEffect(() => {
+    if (!swaySignal || isDraggingRef.current) return;
+
+    const dir = dreadIndex < 3 ? -1 : dreadIndex > 3 ? 1 : -0.6;
+    const amp = 18 + Math.abs(dreadIndex - 3) * 4;
+    const delayMs = dreadIndex * 38;
+
+    let springBackTimer;
+    const startTimer = setTimeout(() => {
+      if (isDraggingRef.current) return;
+      animate(tipX, anchorX + dir * amp, { duration: 0.24, ease: [0.22, 1, 0.36, 1] });
+      animate(tipY, anchorY + initialTipY + 10, { duration: 0.24, ease: [0.22, 1, 0.36, 1] });
+
+      springBackTimer = setTimeout(() => {
+        if (isDraggingRef.current) return;
+        animate(tipX, anchorX, { type: 'spring', stiffness: 260, damping: 14 });
+        animate(tipY, anchorY + initialTipY, { type: 'spring', stiffness: 260, damping: 14 });
+      }, 210);
+    }, delayMs);
+
+    return () => {
+      clearTimeout(startTimer);
+      if (springBackTimer) clearTimeout(springBackTimer);
+    };
+  }, [swaySignal, dreadIndex, anchorX, anchorY, initialTipY, tipX, tipY]);
+
   // 5. Usuń mylące, stare komentarze, które tam zostały
 
   // === KONIEC ZMIAN ===
@@ -130,84 +160,84 @@ export function JellyDread({
   };
 
   // ZMIANA: Dodajemy argumenty `event` i `info` do handleDragEnd
-  const handleDragEnd = (event, info) => {
-    isDraggingRef.current = false;
-    if (onDragEnd) onDragEnd();
+    const handleDragEnd = () => {
+      isDraggingRef.current = false;
+      if (onDragEnd) onDragEnd();
 
-    // Animujemy końcówkę dreda z powrotem na miejsce (tak jak było)
-    animate(tipX, anchorX, { ...springConfig, duration: 0.5 });
-    animate(tipY, anchorY + initialTipY, { ...springConfig, duration: 0.5 });
+      // Animujemy końcówkę dreda z powrotem na miejsce (tak jak było)
+      animate(tipX, anchorX, { ...springConfig, duration: 0.5 });
+      animate(tipY, anchorY + initialTipY, { ...springConfig, duration: 0.5 });
 
-    // KLUCZOWA ZMIANA: Resetujemy pozycję uchwytu, żeby wrócił na swoje miejsce
-    // Używamy animate, żeby był płynny powrót (synchronizuje się z końcówką przez useEffect)
-    animate(handleX, 0, { ...springConfig, duration: 0.5 });
-    animate(handleY, initialTipY, { ...springConfig, duration: 0.5 });
-  };
-
-  // Synchronizujemy pozycję uchwytu z końcówką dreda (tylko gdy nie przeciągamy)
-  // Gdy końcówka wraca na miejsce, uchwyt też powinien wrócić
-  useEffect(() => {
-    const unsubX = tipX.on("change", (v) => {
-      // Aktualizujemy pozycję uchwytu tylko gdy nie przeciągamy ORAZ nie ma aktywnego ducha
-      if (!isDraggingRef.current && (!ghostOffset || (ghostOffset.x.get() === 0 && ghostOffset.y.get() === 0))) {
-        handleX.set(v - CANVAS_CENTER);
-      }
-    });
-    const unsubY = tipY.on("change", (v) => {
-      if (!isDraggingRef.current && (!ghostOffset || (ghostOffset.x.get() === 0 && ghostOffset.y.get() === 0))) {
-        handleY.set(v - CANVAS_CENTER);
-      }
-    });
-
-    return () => {
-      unsubX();
-      unsubY();
+      // KLUCZOWA ZMIANA: Resetujemy pozycję uchwytu, żeby wrócił na swoje miejsce
+      // Używamy animate, żeby był płynny powrót (synchronizuje się z końcówką przez useEffect)
+      animate(handleX, 0, { ...springConfig, duration: 0.5 });
+      animate(handleY, initialTipY, { ...springConfig, duration: 0.5 });
     };
-  }, [tipX, tipY, handleX, handleY, ghostOffset]);
 
-  return (
-    <div className="jelly-dread-container">
-      {/* Uchwyt - pozycjonowany względem końcówki dreda */}
-      <motion.div
-        className="jelly-dread-handle"
-        drag // Przywracamy `drag`, żeby w ogóle dało się przeciągać
-        dragMomentum={false} // Wyłączamy "pęd", żeby element nie leciał dalej po puszczeniu
-        dragSnapToOrigin={false} // Nie resetuj automatycznie, robimy to ręcznie
-        dragConstraints={{ left: -150, right: 150, top: -50, bottom: 100 }}
-        dragElastic={0.2}
-        onDrag={handleDrag}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd} // onDragEnd teraz otrzymuje `info`
-        style={{
-          x: handleX,
-          y: handleY
-        }}
-      />
+    // Synchronizujemy pozycję uchwytu z końcówką dreda (tylko gdy nie przeciągamy)
+    // Gdy końcówka wraca na miejsce, uchwyt też powinien wrócić
+    useEffect(() => {
+      const unsubX = tipX.on("change", (v) => {
+        // Aktualizujemy pozycję uchwytu tylko gdy nie przeciągamy ORAZ nie ma aktywnego ducha
+        if (!isDraggingRef.current && (!ghostOffset || (ghostOffset.x.get() === 0 && ghostOffset.y.get() === 0))) {
+          handleX.set(v - CANVAS_CENTER);
+        }
+      });
+      const unsubY = tipY.on("change", (v) => {
+        if (!isDraggingRef.current && (!ghostOffset || (ghostOffset.x.get() === 0 && ghostOffset.y.get() === 0))) {
+          handleY.set(v - CANVAS_CENTER);
+        }
+      });
 
-      {/* SVG (skalowalne dzięki viewBox) */}
-      <svg className="jelly-dread-svg" viewBox="0 0 1000 1000">
-        <defs>
-          {children}
-        </defs>
-        {/* Biały obrys pod spodem */}
-        <motion.path
-          d={svgPath}
-          stroke="#ffffff"
-          strokeWidth="20"
-          strokeLinecap="butt"
-          pathLength="1"
-          strokeDasharray="0 0.2 0.8 0" /* ukryj pierwsze 20%, maluj resztę */
-          strokeDashoffset="0"
-          fill="none"
+      return () => {
+        unsubX();
+        unsubY();
+      };
+    }, [tipX, tipY, handleX, handleY, ghostOffset]);
+
+    return (
+      <div className="jelly-dread-container">
+        {/* Uchwyt - pozycjonowany względem końcówki dreda */}
+        <motion.div
+          className="jelly-dread-handle"
+          drag // Przywracamy `drag`, żeby w ogóle dało się przeciągać
+          dragMomentum={false} // Wyłączamy "pęd", żeby element nie leciał dalej po puszczeniu
+          dragSnapToOrigin={false} // Nie resetuj automatycznie, robimy to ręcznie
+          dragConstraints={{ left: -150, right: 150, top: -50, bottom: 100 }}
+          dragElastic={0.2}
+          onDrag={handleDrag}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd} // onDragEnd teraz otrzymuje `info`
+          style={{
+            x: handleX,
+            y: handleY
+          }}
         />
-        <motion.path
-          d={svgPath}
-          stroke={`url(#${dreadId})`}
-          strokeWidth="18"
-          strokeLinecap="round"
-          fill="none"
-        />
-      </svg>
-    </div>
-  );
-}
+
+        {/* SVG (skalowalne dzięki viewBox) */}
+        <svg className="jelly-dread-svg" viewBox="0 0 1000 1000">
+          <defs>
+            {children}
+          </defs>
+          {/* Biały obrys pod spodem */}
+          <motion.path
+            d={svgPath}
+            stroke="#ffffff"
+            strokeWidth="20"
+            strokeLinecap="butt"
+            pathLength="1"
+            strokeDasharray="0 0.2 0.8 0" /* ukryj pierwsze 20%, maluj resztę */
+            strokeDashoffset="0"
+            fill="none"
+          />
+          <motion.path
+            d={svgPath}
+            stroke={`url(#${dreadId})`}
+            strokeWidth="18"
+            strokeLinecap="round"
+            fill="none"
+          />
+        </svg>
+      </div>
+    );
+  }

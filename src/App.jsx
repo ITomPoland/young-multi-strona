@@ -85,13 +85,13 @@ function HomePage() {
 
       switch (sectionId) {
         case 'nowa-piosenka':
-          scrollPosition = newSongTop;
+          scrollPosition = newSongTop + (newSongHeight * 0.11);
           break;
         case 'dyskografia':
-          scrollPosition = newSongTop + (newSongHeight * 0.35);
+          scrollPosition = newSongTop + (newSongHeight * 0.27);
           break;
         case 'o-mnie':
-          scrollPosition = newSongTop + (newSongHeight * 0.70);
+          scrollPosition = newSongTop + (newSongHeight * 0.76);
           break;
         case 'merch':
           if (merchRef?.current) {

@@ -17,29 +17,101 @@
   justify-items: center;
 }
 
-/* 2. EFEKT "NOISE" (ZIARNO) - Dodaje teksturę jak w teledyskach */
+/* 2. EFEKT "NOISE" (ZIARNO) - Lekka tekstura PNG zamiast ciężkiego filtra SVG */
 .about-section::before {
   content: "";
   position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
-  opacity: 0.03;
-  /* Bardzo delikatne ziarno */
+  inset: 0;
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyBAMAAADsEZWCAAAAGFBMVEUAAAA5OTkAAABMTExERERmZmYzMzMyMjJl7m+WAAAAAXRSTlMAQObYZgAAAAFiS0dEAIgFHUgAAAAJcEhZcwAACxMAAAsTAQCanBgAAAAHdElNRQfmCwYODiI3sC8AAAAAB3RJTUUH5gsGDg4iN7AvAAAAAHjaY2AYBaNgFIyCUTAKRsEoGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBaNgFIyCUTAKRsEoGAWjYBSMglEwCkbBKBgFo2AUjIJRMApGwSgYBagAAKF/AQE+sPc+AAAAAElFTkSuQmCC");
+  opacity: 0.045;
   pointer-events: none;
   z-index: 0;
-  animation: noiseAnimation 0.5s steps(5) infinite;
 }
 
-@keyframes noiseAnimation {
-  0% {
-    transform: translate(0, 0);
-  }
+/* 2B. RISING STAGE LIGHTING: Overhead volumetric spotlight + silhouette rim glow */
+.about-stage-spotlight {
+  position: absolute;
+  top: -10%;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: 100%;
+  height: 110vh;
+  transform-origin: top center;
+  background: radial-gradient(
+    ellipse 52% 62% at 50% 0%,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(220, 230, 255, 0.06) 36%,
+    rgba(0, 0, 0, 0) 74%
+  );
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform, opacity;
+}
 
-  100% {
-    transform: translate(10px, 10px);
+.about-rim-glow {
+  position: absolute;
+  bottom: 4%;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: min(68vw, 920px);
+  aspect-ratio: 1 / 1;
+  background: radial-gradient(
+    circle at 50% 55%,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(190, 205, 235, 0.05) 38%,
+    rgba(0, 0, 0, 0) 70%
+  );
+  filter: blur(24px);
+  pointer-events: none;
+  z-index: 1;
+  will-change: transform, opacity;
+}
+
+.about-stage-hint {
+  position: absolute;
+  bottom: 62px;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: fit-content;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 1.05rem;
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.78);
+  font-family: 'Courier New', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.about-stage-hint-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent-primary, #ff3333);
+  box-shadow: 0 0 8px var(--color-accent-primary, #ff3333);
+  animation: hintPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes hintPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.75);
   }
 }
 
@@ -47,13 +119,12 @@
 .about-avatar-container {
   position: relative;
   width: 52.08vw;
-  /* 1000px / 1920px */
   aspect-ratio: 1000 / 960;
-  /* Zachowaj proporcje */
   height: auto;
   grid-area: 1 / 1;
   z-index: 10;
-  /* Głowa i dredy są na pierwszym planie */
+  transform-origin: bottom center;
+  will-change: transform, opacity, filter;
 }
 
 .about-head {
@@ -329,8 +400,10 @@
   .about-head.mobile-head {
     position: absolute;
     bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
+    right: 0;
+    margin-inline: auto;
+    transform-origin: bottom center;
     width: 100%;
     max-width: 550px;
     height: auto;

@@ -100,19 +100,19 @@ function MenuOverlay({ onSectionClick, onClose }) {
               { id: 'o-mnie', label: 'O MNIE' },
               { id: 'merch', label: 'MERCH' },
               { id: 'kontakt', label: 'KONTAKT' }
-            ].map((item, index) => (
-              <motion.div key={item.id} variants={linkItemVariants} className="menu-link-wrapper">
-                <a
-                  onClick={() => handleLinkClick(item.id)}
-                  onKeyDown={(e) => handleKeyDown(e, item.id)}
-                  className="menu-link"
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`Przejdź do sekcji ${item.label}`}
-                >
-                  {item.label}
-                </a><br />
-              </motion.div>
+            ].map((item) => (
+            <motion.div key={item.id} variants={linkItemVariants} className="menu-link-wrapper">
+              <a
+                onClick={() => handleLinkClick(item.id)}
+                onKeyDown={(e) => handleKeyDown(e, item.id)}
+                className="menu-link"
+                tabIndex={0}
+                role="button"
+                aria-label={`Przejdź do sekcji ${item.label}`}
+              >
+                {item.label}
+              </a><br />
+            </motion.div>
             ))}
           </motion.nav>
         </div>

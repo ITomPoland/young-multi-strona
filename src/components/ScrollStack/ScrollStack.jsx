@@ -1,7 +1,7 @@
-// Plik: /src/components/ScrollStack/ScrollStack.jsx (NOWA OSTATECZNA WERSJA)
+// Plik: /src/components/ScrollStack/ScrollStack.jsx
 
-import React, { useLayoutEffect, useRef, useCallback, Children, useState, useEffect } from 'react';
-import { useTransform, useMotionValueEvent, useSpring } from 'framer-motion';
+import React, { useLayoutEffect, useRef, useCallback, useState, useEffect } from 'react';
+import { useTransform, useMotionValueEvent } from 'framer-motion';
 import './ScrollStack.css';
 
 export const ScrollStackItem = ({ children, itemClassName = '', style }) => (
@@ -11,15 +11,15 @@ export const ScrollStackItem = ({ children, itemClassName = '', style }) => (
 const ScrollStack = ({
   children,
   className = '',
-  itemDistance = 100, // Zostaje, ale nie jest używane w nowej logice
+  itemDistance = 100,
   itemScale = 0.03,
   itemStackDistance = 30,
   stackPosition = '20%',
-  scaleEndPosition = '10%', // Zostaje dla kompatybilności
+  scaleEndPosition = '10%',
   baseScale = 0.85,
   rotationAmount = 0,
-  blurAmount = 0,
   scrollProgress,
+  scatterProgress,
   isMenuOpen
 }) => {
   const scrollerRef = useRef(null);
@@ -29,16 +29,14 @@ const ScrollStack = ({
 
   const cardTopsRef = useRef([]);
   const [simulatedScrollHeight, setSimulatedScrollHeight] = useState(0);
+  const simulatedScrollHeightRef = useRef(0);
   const latestStackProgress = useRef(0);
-  // ZMIANA: Nie potrzebujemy już 'endElementTopRef'
+  const latestScatterProgress = useRef(0);
 
-  // --- Funkcje pomocnicze (bez zmian) ---
   const calculateProgress = useCallback((scrollTop, start, end) => {
-    // Obsługa odwróconego zakresu (start > end)
     if (start > end) {
       if (scrollTop < end) return 0;
       if (scrollTop > start) return 1;
-      // Mapujemy odwrotnie
       return 1 - (scrollTop - end) / (start - end);
     }
 
@@ -54,31 +52,33 @@ const ScrollStack = ({
     return parseFloat(value);
   }, []);
 
-  const getScrollData = useCallback(() => {
-    const scroller = scrollerRef.current;
-    return {
-      containerHeight: scroller?.clientHeight || 0,
-    };
-  }, []);
-
   const getElementOffset = useCallback(
-    (i) => {
-      return cardTopsRef.current[i] || 0;
-    }, []
+    (i) => cardTopsRef.current[i] || 0,
+    []
   );
 
-  // ZMIANA: Przechowujemy przeliczone wartości w refie, żeby nie liczyć ich przy każdym scrollu
   const layoutValuesRef = useRef({
     stackPositionPx: 0,
     scaleEndPositionPx: 0
   });
 
-  const updateCardTransforms = useCallback((scrollTop) => {
+  const updateCardTransforms = useCallback((scrollTop, scatter = latestScatterProgress.current) => {
     if (!cardsRef.current.length || isUpdatingRef.current) return;
     isUpdatingRef.current = true;
 
-    // Pobieramy cached values
     const { stackPositionPx, scaleEndPositionPx } = layoutValuesRef.current;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const isNarrow = vw < 768;
+
+    // Choreographed 4-way vinyl scatter vectors (Option A: Cards Scatter)
+    // Bottom cards peel outward first, top card (Toxic) lifts subtly toward camera then sweeps out
+    const scatterVectors = [
+      { x: -0.78 * vw, y: -0.42 * vh, rot: isNarrow ? -14 : -22, dScale: -0.22, delay: 0.0 },
+      { x: 0.82 * vw, y: -0.34 * vh, rot: isNarrow ? 13 : 19, dScale: -0.20, delay: 0.05 },
+      { x: -0.76 * vw, y: 0.46 * vh, rot: isNarrow ? -12 : -17, dScale: -0.24, delay: 0.1 },
+      { x: 0.72 * vw, y: 0.30 * vh, rot: isNarrow ? 10 : 14, dScale: 0.14, delay: 0.16 }
+    ];
 
     cardsRef.current.forEach((card, i) => {
       if (!card) return;
@@ -87,57 +87,61 @@ const ScrollStack = ({
       const triggerStart = cardTop - scaleEndPositionPx;
       const triggerEnd = cardTop - stackPositionPx - (itemStackDistance * i);
 
-      // To jest nasz "główny" postęp animacji (od 0.0 do 1.0)
       const overallProgress = calculateProgress(scrollTop, triggerStart, triggerEnd);
-
-
-      // ===================================
-      // === NOWA LOGIKA "KWADRATOWA" ===
-      // ===================================
-
-      // ETAP 1: Translacja (Dzieje się w pierwszej połowie animacji: 0.0 -> 0.5)
-      // Mapujemy overallProgress [0, 0.5] na translateProgress [0, 1]
       const translateProgress = Math.min(1, overallProgress / 0.5);
-
-      // ETAP 2: Skalowanie (Dzieje się w drugiej połowie animacji: 0.5 -> 1.0)
-      // Mapujemy overallProgress [0.5, 1.0] na scaleProgress [0, 1]
       const scaleProgress = Math.max(0, (overallProgress - 0.5) / 0.5);
 
-      // ===================================
-      // === ZASTOSOWANIE NOWEJ LOGIKI ===
-      // ===================================
-
-      // 1. Skala (Duża -> Mała) - Używa teraz 'scaleProgress'
       const targetScale = baseScale + i * itemScale;
-      const scale = 1 - scaleProgress * (1 - targetScale);
+      let scale = 1 - scaleProgress * (1 - targetScale);
 
-      // 2. Translacja Y (Dół -> Góra) - Używa teraz 'translateProgress'
       const totalTranslate = -(cardTop - (stackPositionPx + itemStackDistance * i));
-      const translateY = translateProgress * totalTranslate;
-
-      // Reszta (Rotację też podpinamy pod 'scaleProgress', aby działo się to na górze)
-      const rotation = rotationAmount ? i * rotationAmount * scaleProgress : 0;
+      let translateX = 0;
+      let translateY = translateProgress * totalTranslate;
+      let rotation = rotationAmount ? i * rotationAmount * scaleProgress : 0;
+      let opacity = 1;
       let blur = 0;
 
-      // --- Zastosowanie transformacji (bez zmian) ---
+      // Apply choreographed 3D scatter once cards finish stacking
+      if (scatter > 0.0001) {
+        const cfg = scatterVectors[i % scatterVectors.length];
+        const localT = Math.min(1, Math.max(0, (scatter - cfg.delay) / (1 - cfg.delay)));
+        // Smooth accelerating peel-away curve
+        const smooth = localT * localT * (3 - 2 * localT);
+        const accel = Math.pow(localT, 1.55);
+
+        translateX = cfg.x * accel;
+        translateY += cfg.y * accel;
+        scale = Math.max(0.35, scale + cfg.dScale * smooth);
+        rotation += cfg.rot * smooth;
+        opacity = localT < 0.32 ? 1 : Math.max(0, 1 - (localT - 0.32) / 0.68);
+        if (!isNarrow && localT > 0.25) {
+          blur = ((localT - 0.25) / 0.75) * 4;
+        }
+      }
+
       const newTransform = {
+        translateX: Math.round(translateX * 100) / 100,
         translateY: Math.round(translateY * 100) / 100,
         scale: Math.round(scale * 1000) / 1000,
         rotation: Math.round(rotation * 100) / 100,
-        blur: Math.round(blur * 100) / 100
+        opacity: Math.round(opacity * 1000) / 1000,
+        blur: Math.round(blur * 10) / 10
       };
 
       const lastTransform = lastTransformsRef.current.get(i);
       const hasChanged =
         !lastTransform ||
+        Math.abs(lastTransform.translateX - newTransform.translateX) > 0.1 ||
         Math.abs(lastTransform.translateY - newTransform.translateY) > 0.1 ||
-        Math.abs(lastTransform.scale - newTransform.scale) > 0.001;
+        Math.abs(lastTransform.scale - newTransform.scale) > 0.001 ||
+        Math.abs(lastTransform.rotation - newTransform.rotation) > 0.05 ||
+        Math.abs(lastTransform.opacity - newTransform.opacity) > 0.002 ||
+        Math.abs(lastTransform.blur - newTransform.blur) > 0.1;
 
       if (hasChanged) {
-        const transform = `translate3d(0, ${newTransform.translateY}px, 0) scale(${newTransform.scale}) rotate(${newTransform.rotation}deg)`;
-        const filter = newTransform.blur > 0 ? `blur(${newTransform.blur}px)` : '';
-        card.style.transform = transform;
-        card.style.filter = filter;
+        card.style.transform = `translate3d(${newTransform.translateX}px, ${newTransform.translateY}px, 0) scale(${newTransform.scale}) rotate(${newTransform.rotation}deg)`;
+        card.style.opacity = newTransform.opacity;
+        card.style.filter = newTransform.blur > 0.1 ? `blur(${newTransform.blur}px)` : '';
         lastTransformsRef.current.set(i, newTransform);
       }
     });
@@ -145,20 +149,16 @@ const ScrollStack = ({
     isUpdatingRef.current = false;
   }, [
     itemScale, itemStackDistance, baseScale,
-    rotationAmount, blurAmount,
+    rotationAmount,
     calculateProgress, getElementOffset
   ]);
 
-  // --- Logika mapowania scrolla (z 'useSpring') ---
-  const rawStackProgress = useTransform(
+  const stackProgress = useTransform(
     scrollProgress,
-    [0.35, 0.6], // Używamy zakresu 65%-100%
+    [0.25, 0.56],
     [0, 1]
   );
 
-  const stackProgress = rawStackProgress;
-
-  // --- ZMIANA: useLayoutEffect (poprawka zIndex) ---
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
@@ -167,7 +167,6 @@ const ScrollStack = ({
     const cards = Array.from(scroller.querySelectorAll('.scroll-stack-card'));
     if (cards.length === 0) return;
 
-    // PRZELICZAMY WARTOŚCI LAYOUTU RAZ
     const containerHeight = scroller.clientHeight;
     layoutValuesRef.current = {
       stackPositionPx: parsePercentage(stackPosition, containerHeight),
@@ -178,62 +177,65 @@ const ScrollStack = ({
 
     const tops = [];
     cards.forEach((card, i) => {
-      // Usunęliśmy 'itemDistance' stąd
-      card.style.willChange = 'transform, filter';
-      card.style.transformOrigin = 'top center';
-
-      // === ZMIANA: Karta 0 jest na spodzie (zIndex: 1), Karta 3 na wierzchu (zIndex: 4)
+      card.style.willChange = 'transform, opacity, filter';
+      card.style.transformOrigin = 'center center';
       card.style.zIndex = i + 1;
-
-      const cardTop = card.offsetTop;
-      tops.push(cardTop);
+      tops.push(card.offsetTop);
     });
     cardTopsRef.current = tops;
 
     const scrollHeight = innerContent.scrollHeight;
     const clientHeight = scroller.clientHeight;
-    setSimulatedScrollHeight(scrollHeight - clientHeight);
+    const virtualHeight = scrollHeight - clientHeight;
+    simulatedScrollHeightRef.current = virtualHeight;
+    setSimulatedScrollHeight(virtualHeight);
 
-    // ZMIANA: Zamiast 0, używamy aktualnego postępu, jeśli jest dostępny
-    const currentProgress = latestStackProgress.current;
-    const initialVirtualScrollTop = currentProgress * (scrollHeight - clientHeight);
+    const initialVirtualScrollTop = latestStackProgress.current * virtualHeight;
+    updateCardTransforms(initialVirtualScrollTop, latestScatterProgress.current);
 
-    updateCardTransforms(initialVirtualScrollTop);
+    const transformsMap = lastTransformsRef.current;
 
     return () => {
       cardsRef.current = [];
       cardTopsRef.current = [];
-      lastTransformsRef.current.clear();
+      transformsMap.clear();
       isUpdatingRef.current = false;
     };
   }, [
-    stackPosition, scaleEndPosition, parsePercentage, // Zależności layoutu
+    stackPosition, scaleEndPosition, parsePercentage,
     itemDistance, updateCardTransforms, children
   ]);
 
-  // --- Podpięcie 'stackProgress' (bez zmian) ---
   useMotionValueEvent(stackProgress, "change", (latest) => {
     latestStackProgress.current = latest;
-    // `simulatedScrollHeight` musi być dobrze policzone
-    const virtualScrollTop = latest * simulatedScrollHeight;
-    updateCardTransforms(virtualScrollTop);
+    const virtualScrollTop = latest * simulatedScrollHeightRef.current;
+    updateCardTransforms(virtualScrollTop, latestScatterProgress.current);
   });
+
   useEffect(() => {
-    // Nasłuchujemy tylko na moment ZAMKNIĘCIA menu
+    if (!scatterProgress) return;
+    latestScatterProgress.current = scatterProgress.get();
+
+    const unsub = scatterProgress.on("change", (latest) => {
+      latestScatterProgress.current = latest;
+      const virtualScrollTop = latestStackProgress.current * simulatedScrollHeightRef.current;
+      updateCardTransforms(virtualScrollTop, latest);
+    });
+
+    return () => unsub();
+  }, [scatterProgress, updateCardTransforms]);
+
+  useEffect(() => {
     if (isMenuOpen === false) {
-      // Menu zostało właśnie zamknięte.
-      // Wymuszamy ręczne przeliczenie pozycji kart,
-      // używając ostatniej zapisanej pozycji scrolla.
       const virtualScrollTop = latestStackProgress.current * simulatedScrollHeight;
-      updateCardTransforms(virtualScrollTop);
+      updateCardTransforms(virtualScrollTop, latestScatterProgress.current);
     }
   }, [isMenuOpen, updateCardTransforms, simulatedScrollHeight]);
-  // --- Render (bez zmian) ---
+
   return (
     <div className={`scroll-stack-scroller ${className}`.trim()} ref={scrollerRef}>
       <div className="scroll-stack-inner">
         {children}
-        {/* Usunęliśmy .scroll-stack-end, bo nie jest potrzebny w tej logice */}
       </div>
     </div>
   );

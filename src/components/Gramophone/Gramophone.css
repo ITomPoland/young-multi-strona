@@ -72,6 +72,15 @@
   image-rendering: -webkit-optimize-contrast;
 }
 
+.gramophone-blackout-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 45%, rgba(0, 0, 0, 0.92) 0%, #000000 72%);
+  will-change: opacity;
+}
+
 .gramophone-content-world {
   position: absolute;
   /* Zmieniamy szerokość na 100% i usuwamy left shift, żeby nie uciekało */
