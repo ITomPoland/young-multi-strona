@@ -4,6 +4,7 @@ import './Preloader.css';
 import logoWhite from '../../assets/logoyflbiale.avif';
 import { usePerformance } from '../../context/PerformanceContext';
 import useFpsMonitor from '../../hooks/useFpsMonitor';
+import { whenStoryReady } from '../../story/storyReady';
 
 // MINIMALIST LUXURY VARIANT
 const containerVariants = {
@@ -75,9 +76,11 @@ function Preloader({ onComplete }) {
       }, 30);
 
       // Wait for fonts and minimum visual duration in parallel
+      // ...and for the story canvas, which draws the hero's first frame
       await Promise.all([
         document.fonts.ready,
-        new Promise((resolve) => setTimeout(resolve, duration))
+        new Promise((resolve) => setTimeout(resolve, duration)),
+        whenStoryReady()
       ]);
 
       if (isCancelled) return;

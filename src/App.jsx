@@ -1,7 +1,7 @@
 // Plik: /src/App.jsx
 
 import React, { useState, useRef, useCallback, Suspense, lazy } from 'react';
-import { AnimatePresence, useTransform } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 
 // Critical components - load immediately
 import Hero from './components/Hero/Hero';
@@ -16,7 +16,7 @@ import useAdaptiveFavicon from './hooks/useAdaptiveFavicon';
 import head1Img from './assets/head1.avif'; // Explicit import for preload
 import StorySection from './story/StorySection';
 import { useStoryVh, storyVhToScroll, viewportMetrics } from './story/useStoryScroll';
-import { HERO_TR_END_VH, anchorVh } from './story/story.config';
+import { anchorVh } from './story/story.config';
 import { legacyToLocal } from './components/NewSong/timeline';
 
 // Lazy-loaded components - load when needed (below the fold)
@@ -51,7 +51,6 @@ function HomePage() {
 
   // One scroll clock for the whole story (scroll position in vh)
   const storyVh = useStoryVh();
-  const heroTransition = useTransform(storyVh, [0, HERO_TR_END_VH], [0, 0.5], { clamp: true });
 
   // === ADAPTIVE FAVICON ===
   useAdaptiveFavicon();
@@ -184,8 +183,8 @@ function HomePage() {
         </AnimatePresence>
 
         <main>
-          <Hero ref={heroRef} transitionProgress={heroTransition} startAnimation={!isLoading} />
-          <StorySection ref={storyRef} storyVh={storyVh} />
+          <Hero ref={heroRef} />
+          <StorySection ref={storyRef} storyVh={storyVh} startAnimation={!isLoading} />
           <Suspense fallback={null}>
             <NewSong ref={newSongRef} isMenuOpen={isMenuOpen} />
             <Merch ref={merchRef} />

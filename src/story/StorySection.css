@@ -36,11 +36,14 @@
   overflow: hidden;
 }
 
+.story-canvas-intro {
+  position: absolute;
+  inset: 0;
+}
+
 .story-canvas-wrap {
   position: absolute;
   inset: 0;
-  opacity: 0;
-  visibility: hidden;
 }
 
 .story-canvas-wrap canvas {

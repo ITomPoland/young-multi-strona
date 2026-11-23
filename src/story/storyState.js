@@ -7,7 +7,10 @@ export function createStoryState() {
   return {
     vh: 0,
     active: true,
-    canvasOpacity: 0,
+    tr: 0, // hero clock 0 -> 0.5 (Multi dissolves, dust into the grout)
+    pulse: 0, // burst light pulse through the room 0 -> 1
+    heroStart: false, // preloader done: the hero type reveals
+    video: null, // the stacked hero video element (Multi + matte)
     crack: 0,
     burst: 0,
     single: 0,

@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLSL_PHOTO_PROJECTION } from './calibration';
+import { BEATS } from '../story.config';
 
 // =====================================================================
 // The one tile that flies at the camera in bullet time and turns into the single.
@@ -98,7 +99,7 @@ export default function HeroTile({ photo, cover, state }) {
     mesh.scale.copy(t.scale);
     mat.uniforms.uReveal.value = t.reveal;
     const st = state.current;
-    const autoClean = st.touch && st.single > 0.45 && st.turn < 0.1;
+    const autoClean = st.touch && st.vh > BEATS.textIn[1] + 8 && st.turn < 0.1;
     const target = st.hover || autoClean ? 1 : 0;
     mat.uniforms.uHover.value += (target - mat.uniforms.uHover.value) * Math.min(1, dt * (autoClean ? 2.5 : 6));
     mat.uniforms.uTime.value += dt;

@@ -1,14 +1,15 @@
 import { useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { CHAPTER_RANGES, CANVAS_FADE_VH, chapterProgress } from './story.config';
+import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock } from './story.config';
 import { PHOTO } from './world/calibration';
 import { REST_SIZE, heroTileAt } from './storyThree';
 
 // =====================================================================
 // The director turns ONE number (scroll position in story-vh) into everything:
-// camera pose + lens, crack/burst timing (with the bullet-time curve), the hero tile's
-// flight and the pixel-locked pose next to the DOM text. Runs first every frame.
+// camera pose + lens, crack front, burst clock (speed ramp that never stops), the burst
+// pulse, the hero tile's flight and the pixel-locked pose next to the DOM text.
+// Timings live in story.config (BEATS). Runs first every frame.
 // =====================================================================
 
 const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
@@ -60,19 +61,19 @@ const _endPos = new THREE.Vector3();
 const _endQuat = new THREE.Quaternion();
 
 export default function StoryDirector({ storyVh, state }) {
-  const { camera, size } = useThree();
+  const { camera, size, scene } = useThree();
 
   useEffect(() => {
     camera.near = 0.03;
     camera.far = 60;
-    if (import.meta.env.DEV) window.__story = { state: state.current, camera };
+    if (import.meta.env.DEV) window.__story = { state: state.current, camera, scene };
     const onMove = (e) => {
       state.current.pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
       state.current.pointer.y = -((e.clientY / window.innerHeight) * 2 - 1);
     };
     window.addEventListener('mousemove', onMove, { passive: true });
     return () => window.removeEventListener('mousemove', onMove);
-  }, [camera, state]);
+  }, [camera, scene, state]);
 
   useFrame((frame, dt) => {
     const s = state.current;
@@ -80,61 +81,59 @@ export default function StoryDirector({ storyVh, state }) {
     s.vh = vh;
     const time = frame.clock.elapsedTime;
     const aspect = size.width / Math.max(size.height, 1);
+    const B = BEATS.burst;
+    const CAUGHT = BEATS.caught;
+    const [turnStart, turnEnd] = CHAPTER_RANGES.turn;
 
-    const [explodeStart, explodeEnd] = CHAPTER_RANGES.explode;
-    const [singleStart, singleEnd] = CHAPTER_RANGES.single;
-    const [, turnEnd] = CHAPTER_RANGES.turn;
-
-    s.active = vh >= CANVAS_FADE_VH[0] - 2 && vh <= turnEnd + 2;
-    s.canvasOpacity = smooth(CANVAS_FADE_VH[0], CANVAS_FADE_VH[1], vh);
-
-    const q = chapterProgress('explode', vh);
-    const sp = chapterProgress('single', vh);
+    // one canvas from the hero to the end of the story
+    s.active = vh <= turnEnd + 2;
+    s.tr = heroTr(vh);
     const d = chapterProgress('turn', vh);
-    s.single = sp;
+    s.single = chapterProgress('single', vh);
     s.turn = d;
 
-    // --- cracks: the grout Multi's dust went into is already glowing at the hand-off ---
-    // the grout under the dust is lit from the very first 3D frame (no gap at the hand-off)
-    s.crack = Math.max(0.22, smooth(0, 0.3, q) * 0.72);
+    // --- charge: ONE crack front, from the first settled dust straight into the burst ---
+    s.crack = crackFront(vh) / 12;
 
-    // --- SPEED RAMP (music-video edit): burst -> near-freeze while the single passes
-    //     -> time snaps back as we whip through the hole ---
-    const bu = clamp01((q - 0.28) / 0.72);
-    s.burst =
-      1.0 * (1 - Math.pow(1 - bu, 2.4)) +
-      sp * 0.07 +
-      easeInCubic(clamp01(d / 0.6)) * 1.2 +
-      Math.max(0, d - 0.6) * 0.35;
+    // --- burst: a soft light wave runs through the room ---
+    s.pulse = vh > B ? Math.min((vh - B) / BEATS.pulseVh, 1) : 0;
 
+    // --- story time: impact -> eases into slow motion as the camera catches the tile ->
+    //     slow drift through the hold -> the turn ramps it back up. Speed never hits 0.
+    s.burst = burstClock(vh) + easeInCubic(clamp01(d / 0.6)) * 1.2 + Math.max(0, d - 0.6) * 0.35;
 
     // --- CAMERA ---------------------------------------------------------------
     const DEG = Math.PI / 180;
     // lens first (independent of the pose): hero crop -> centred, wider on the punch / whip
     const m = easeInOutCubic(clamp01(d / 0.6)); // the whip through the hole
     const startOff = PHOTO.cy - PHOTO.height / 2;
-    const lensOff = THREE.MathUtils.lerp(startOff, 0, smooth(0, 0.6, q));
-    const punchPeak = smooth(0.28, 0.42, q) * (1 - smooth(0.45, 0.9, q));
+    const lensOff = THREE.MathUtils.lerp(startOff, 0, smooth(B - 15, B + 35, vh));
+    const punchPeak = smooth(B, B + 8, vh) * (1 - smooth(B + 14, B + 50, vh));
     const zoom = 1 - punchPeak * 0.12 - Math.sin(m * Math.PI) * 0.16;
     const frustum = applyLens(camera, aspect, lensOff, zoom);
 
-    // (A) base path: creep while the grout glows, punch-in on the burst, start turning
-    const creep = smooth(0, 0.28, q) * 0.35;
-    const punch = easeOutCubic(clamp01((q - 0.28) / 0.72)) * 1.45;
-    const shakeAmt = smooth(0.12, 0.3, q) * (1 - smooth(0.32, 0.7, q)) * 0.016 + Math.sin(m * Math.PI) * 0.006;
+    // (A) base path: creeps in while the charge builds, punches in on the burst
+    const creep = smooth(BEATS.charge[0], B, vh) * 0.35;
+    const punch = easeOutCubic(clamp01((vh - B) / 60)) * 1.45;
+    const shakeAmt = smooth(B - 30, B, vh) * (1 - smooth(B + 3, B + 40, vh)) * 0.016 + Math.sin(m * Math.PI) * 0.006;
     const shakeX = Math.sin(time * 41.0) * Math.sin(time * 13.7) * shakeAmt;
     const shakeY = Math.sin(time * 37.0 + 1.3) * Math.cos(time * 11.3) * shakeAmt;
     const yawScale = THREE.MathUtils.lerp(0.55, 1, clamp01((aspect - 0.5) / 1.0));
     _basePos.set(shakeX, shakeY, -(creep + punch));
-    _e.set(0, smooth(0.5, 1, q) * 14 * DEG * yawScale, (smooth(0.3, 0.55, q) * (1 - smooth(0.6, 1, q)) * 4 * DEG) + shakeX * 0.6, 'YXZ');
+    _e.set(0, smooth(B + 20, B + 65, vh) * 14 * DEG * yawScale, (smooth(B + 2, B + 22, vh) * (1 - smooth(B + 28, B + 60, vh)) * 4 * DEG) + shakeX * 0.6, 'YXZ');
     _baseQuat.setFromEuler(_e);
 
     // (B) the single's tile flies on its own ballistic path (same clock as the debris)
     const t = s.heroTile;
     heroTileAt(s.burst, t.position, t.quaternion);
-    // after the hold the camera lets go: frame it where it was when time snapped back
-    const RELEASE_BURST = 1.07; // burst clock at the end of the hold (1.0 + 0.07)
-    const lockBurst = d > 0 ? Math.min(s.burst, RELEASE_BURST) : s.burst;
+    // The camera does NOT chase the tile off the wall: it heads straight for where the
+    // tile will be when it is caught (CAUGHT) and the tile flies into that frame. From the
+    // catch on it follows the (slow-motion) tile; after the hold it lets go.
+    const caughtBurst = burstClock(CAUGHT);
+    const releaseBurst = burstClock(turnStart);
+    // (eased in, so following the slow tile starts without a kink: x²/(x+k) has slope 0 at 0)
+    const over = Math.max(Math.min(s.burst, releaseBurst) - caughtBurst, 0);
+    const lockBurst = caughtBurst + (over * over) / (over + 0.015);
     heroTileAt(lockBurst, _tilePos, _tileQuat);
 
     // camera pose that frames the tile exactly in the DOM slot (camera faces its print)
@@ -155,9 +154,11 @@ export default function StoryDirector({ storyVh, state }) {
     const k = Math.min(1, dt * 3);
     p.sx += (p.x - p.sx) * k;
     p.sy += (p.y - p.sy) * k;
-    const holdW = smooth(0.28, 0.42, sp) * (1 - smooth(0.0, 0.12, d));
-    // mouse orbits the camera around the tile (tile stays in the slot, world parallaxes)
-    _e.set(p.sy * 0.06 * holdW, -p.sx * 0.09 * holdW, 0, 'YXZ');
+    const holdW = smooth(CAUGHT - 8, CAUGHT + 10, vh) * (1 - smooth(0.0, 0.12, d));
+    // mouse orbits the camera around the tile (tile stays in the slot, world parallaxes);
+    // a slow breathing drift keeps the frozen moment alive
+    const drift = holdW * (1 - smooth(0.0, 0.08, d));
+    _e.set(p.sy * 0.06 * holdW + Math.sin(time * 0.37) * 0.012 * drift, -p.sx * 0.09 * holdW + Math.sin(time * 0.23 + 1.1) * 0.018 * drift, 0, 'YXZ');
     _q.setFromEuler(_e);
     _lockQuat.copy(_tileQuat).multiply(_q);
     _lockPos.copy(_tilePos).sub(_v.set(sx * dist, sy * dist + Math.sin(time * 0.8) * 0.002 * holdW, -dist).applyQuaternion(_lockQuat));
@@ -167,8 +168,8 @@ export default function StoryDirector({ storyVh, state }) {
     const after = easeOutCubic(clamp01((d - 0.6) / 0.4));
     _endPos.set(0, 0, -7.1 - after * 0.45);
 
-    // blend A -> B (meet the tile as time slows down) -> C (let go, whip through the hole)
-    const meet = easeInOutCubic(clamp01((vh - (explodeStart + (explodeEnd - explodeStart) * 0.62)) / ((singleStart + (singleEnd - singleStart) * 0.32) - (explodeStart + (explodeEnd - explodeStart) * 0.62))));
+    // ONE move: from the impact straight to the catch pose, arriving as time has slowed
+    const meet = easeInOutCubic(clamp01((vh - (B + 2)) / (CAUGHT - (B + 2))));
     camera.position.copy(_basePos).lerp(_lockPos, meet);
     camera.quaternion.copy(_baseQuat).slerp(_lockQuat, meet);
     if (d > 0) {
@@ -186,9 +187,7 @@ export default function StoryDirector({ storyVh, state }) {
     s.black = smooth(0.84, 0.98, d);
 
     // --- the tile's print burns in while it tumbles toward us ---
-    const flyStart = explodeStart + (explodeEnd - explodeStart) * 0.3;
-    const flyEnd = singleStart + (singleEnd - singleStart) * 0.34;
-    const e = easeOutCubic(clamp01((vh - flyStart) / (flyEnd - flyStart)));
+    const e = easeOutCubic(clamp01((vh - (B + 3)) / (CAUGHT - (B + 3))));
     t.reveal = smooth(0.45, 0.95, e);
     t.scale.copy(REST_SIZE);
     t.visible = true;

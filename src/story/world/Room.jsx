@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import {
   WALL_Z, WALL_LEFT, WALL_RIGHT, WALL_TOP, FLOOR_Y, CEILING_Y, PITCH_X, PITCH_Y,
   HOLE_CENTER, SLAB_FRONT_Z, SLAB_BACK_Z, WALL_THICKNESS, INNER_RADIUS,
-  GLSL_PHOTO_PROJECTION, GLSL_PHOTO_WRAPPED, GLSL_TILE_STATE, GLSL_CRACKS, GLSL_HOLE
+  GLSL_PHOTO_PROJECTION, GLSL_PHOTO_WRAPPED, GLSL_TILE_STATE, GLSL_CRACKS, GLSL_HOLE, GROUT_LIGHT, GLSL_PULSE
 } from './calibration';
 import { getHoleTexture, createWallSlabGeometry } from './hole';
 
@@ -35,14 +35,21 @@ const ROOM_FRAG = /* glsl */ `
   uniform sampler2D uPhoto;
   uniform float uFrontWall;
   uniform float uExposure;
+  uniform float uPulse;
   varying vec3 vWorld;
+  varying vec3 vNormalW;
   ${GLSL_PHOTO_PROJECTION}
   ${GLSL_PHOTO_WRAPPED}
+  ${GLSL_PULSE}
   void main() {
     // the front wall (never in the photo) borrows the back wall's tiles
     vec3 p = uFrontWall > 0.5 ? vec3(vWorld.xy, ${WALL_Z.toFixed(4)}) : vWorld;
     // seen from behind the wall the room is the only light source: push it a bit
-    gl_FragColor = vec4(texture2D(uPhoto, photoUvWrapped(p)).rgb * uExposure, 1.0);
+    vec3 col = texture2D(uPhoto, photoUvWrapped(p)).rgb * uExposure;
+    // the burst pulse runs along the grout of every surface
+    float ring = pulseRing(vWorld);
+    if (ring > 0.001) col += ${GROUT_LIGHT} * ring * worldGrout(vWorld, vNormalW) * 0.28 + col * ring * 0.05;
+    gl_FragColor = vec4(col, 1.0);
   }
 `;
 
@@ -54,8 +61,10 @@ const WALL_FRONT_FRAG = /* glsl */ `
   uniform float uCrack;
   uniform float uBurst;
   uniform float uTime;
+  uniform float uPulse;
   varying vec3 vWorld;
   ${GLSL_PHOTO_PROJECTION}
+  ${GLSL_PULSE}
   ${GLSL_TILE_STATE}
   ${GLSL_CRACKS}
   ${GLSL_HOLE}
@@ -91,13 +100,16 @@ const WALL_FRONT_FRAG = /* glsl */ `
     plaster = mix(plaster, vec3(0.42, 0.41, 0.39) * (0.8 + plasterN * 0.4), rim * step(0.001, open));
     vec3 col = mix(photo, plaster, tileGone);
 
-    // "prześwietlenie": the grout of cracked tiles glows (the dust went in here)
+    // "prześwietlenie": the grout lights up tile by tile as Multi's dust settles into it,
+    // and keeps spreading with the crack front (one curve, story.config crackFront)
     float grout = 1.0 - smoothstep(0.03, 0.085, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
     float cd = crackDist(cell);
-    float cracked = smoothstep(cd - 1.5, cd + 0.4, uCrack * 12.0);
+    float lit = smoothstep(cd - 1.5, cd + 0.4, uCrack * 12.0);
     float flicker = 0.88 + 0.12 * sin(uTime * 13.0 + cell.x * 3.1 + cell.y * 1.7);
-    float leak = grout * cracked * (1.0 - tileGone) * (1.0 - smoothstep(0.04, 0.35, uBurst)) * flicker;
-    col += vec3(0.85, 1.05, 1.15) * leak * 1.7;
+    float leak = grout * lit * (1.0 - tileGone) * (1.0 - smoothstep(0.04, 0.35, uBurst)) * flicker;
+    col += ${GROUT_LIGHT} * leak;
+    // the burst pulse lights all the grout as it passes
+    col += ${GROUT_LIGHT} * pulseRing(vWorld) * grout * (1.0 - tileGone) * 0.28;
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -173,20 +185,22 @@ const SHAFT_FRAG = /* glsl */ `
 `;
 
 export default function Room({ photo, state }) {
+  const groupRef = useRef();
   const frontRef = useRef();
   const slabRef = useRef();
   const shaftRef = useRef();
   const holeTex = getHoleTexture();
 
-  const roomUniforms = useMemo(() => ({ uPhoto: { value: photo }, uFrontWall: { value: 0 }, uExposure: { value: 1 } }), [photo]);
-  const frontWallUniforms = useMemo(() => ({ uPhoto: { value: photo }, uFrontWall: { value: 1 }, uExposure: { value: 1 } }), [photo]);
+  const roomUniforms = useMemo(() => ({ uPhoto: { value: photo }, uFrontWall: { value: 0 }, uExposure: { value: 1 }, uPulse: { value: 0 } }), [photo]);
+  const frontWallUniforms = useMemo(() => ({ uPhoto: { value: photo }, uFrontWall: { value: 1 }, uExposure: { value: 1 }, uPulse: { value: 0 } }), [photo]);
   const wallFrontUniforms = useMemo(
     () => ({
       uPhoto: { value: photo },
       uHole: { value: holeTex },
       uCrack: { value: 0 },
       uBurst: { value: 0 },
-      uTime: { value: 0 }
+      uTime: { value: 0 },
+      uPulse: { value: 0 }
     }),
     [photo, holeTex]
   );
@@ -217,12 +231,18 @@ export default function Room({ photo, state }) {
       u.uCrack.value = s.crack;
       u.uBurst.value = s.burst;
       u.uTime.value += dt;
+      u.uPulse.value = s.pulse;
     }
     if (slabRef.current) slabRef.current.uniforms.uBurst.value = s.burst;
     // exposure stays exactly 1 while the photo must match the hero, rises after the turn
     const exposure = 1 + 0.7 * THREE.MathUtils.smoothstep(s.turn, 0.2, 0.55);
-    roomUniforms.uExposure.value = exposure;
-    frontWallUniforms.uExposure.value = exposure;
+    // (r3f copies `uniforms` into each material: update the live ones)
+    groupRef.current?.children.forEach((child) => {
+      const u = child.material?.uniforms;
+      if (!u || !u.uFrontWall) return;
+      u.uExposure.value = exposure;
+      u.uPulse.value = s.pulse;
+    });
     if (shaftRef.current) {
       shaftRef.current.uniforms.uIntensity.value = THREE.MathUtils.smoothstep(s.burst, 0.1, 0.6);
       shaftRef.current.uniforms.uTime.value += dt;
@@ -230,7 +250,7 @@ export default function Room({ photo, state }) {
   });
 
   return (
-    <group>
+    <group ref={groupRef}>
       <mesh position={[midX, FLOOR_Y, midZ]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[width, roomDepth]} />
         <shaderMaterial vertexShader={WORLD_VERT} fragmentShader={ROOM_FRAG} uniforms={roomUniforms} side={THREE.DoubleSide} />

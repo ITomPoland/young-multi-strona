@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import {
   TILE_COLS, TILE_ROWS, PITCH_X, PITCH_Y, WALL_Z, WALL_LEFT, WALL_TOP,
   TILE_THICKNESS, HOLE_CENTER, HERO_CELL, GLSL_PHOTO_PROJECTION, GLSL_TILE_STATE,
-  GLSL_CRACKS, GLSL_HOLE
+  GLSL_CRACKS, GLSL_HOLE, GLSL_PULSE, GROUT_LIGHT
 } from './calibration';
 import { getHoleTexture } from './hole';
 
@@ -64,6 +64,8 @@ const VERT = /* glsl */ `
     vec2 dh = (center.xy - vec2(${HOLE_CENTER.x.toFixed(3)}, ${HOLE_CENTER.y.toFixed(3)})) / ${PITCH_X.toFixed(4)};
     if (length(dh) < holeRadius(atan(dh.y, dh.x)) + 0.9) zone = 2.0;
     float cd = crackDist(aCell);
+    // nothing is cracked in the hero frame (front <= -1.5): tiles start to shiver as their
+    // grout lights up (dust settling, then the spreading cracks)
     float cracked = smoothstep(cd - 1.5, cd + 0.4, uCrack * 12.0);
     vCrack = cracked;
 
@@ -137,6 +139,7 @@ const FRAG = /* glsl */ `
   uniform sampler2D uPhoto;
   uniform float uCrack;
   uniform float uBurst;
+  uniform float uPulse;
 
   varying vec3 vRestWorld;
   varying vec2 vUv;
@@ -146,6 +149,15 @@ const FRAG = /* glsl */ `
   varying vec4 vRand;
 
   ${GLSL_PHOTO_PROJECTION}
+  ${GLSL_PULSE}
+
+  // the tile's own outline (grout side), about a pixel wide at any distance
+  float tileEdge(vec2 uv) {
+    vec2 fw = max(fwidth(uv), vec2(1e-4));
+    vec2 f = min(uv, 1.0 - uv);
+    vec2 l = 1.0 - smoothstep(fw * 0.8, fw * 1.8, f);
+    return max(l.x, l.y);
+  }
 
   float crackLine(vec2 uv, float seed) {
     float a = seed * 6.2831;
@@ -172,7 +184,11 @@ const FRAG = /* glsl */ `
     } else {
       col = vec3(0.24, 0.24, 0.23) * (0.8 + vRand.z * 0.4); // tile adhesive
     }
-    gl_FragColor = vec4(col * vShade, 1.0);
+    vec3 light = vec3(0.0);
+    // the burst pulse runs round every tile as it passes (also the ones already flying)
+    float ring = pulseRing(vRestWorld);
+    if (ring > 0.001 && vFace < 0.5) light = ${GROUT_LIGHT} * ring * tileEdge(vUv) * 0.28 + col * ring * 0.05;
+    gl_FragColor = vec4(col * vShade + light, 1.0);
   }
 `;
 
@@ -220,6 +236,7 @@ export default function TileWall({ photo, state }) {
       uCrack: { value: 0 },
       uBurst: { value: 0 },
       uTime: { value: 0 },
+      uPulse: { value: 0 },
       uHeroCell: { value: new THREE.Vector2(HERO_CELL.x, HERO_CELL.y) },
       uHole: { value: getHoleTexture() },
       uHeroPos: { value: new THREE.Vector3(0, 0, 99) },
@@ -233,6 +250,7 @@ export default function TileWall({ photo, state }) {
     if (!u) return;
     u.uCrack.value = state.current.crack;
     u.uBurst.value = state.current.burst;
+    u.uPulse.value = state.current.pulse;
     if (state.current.heroTile) u.uHeroPos.value.copy(state.current.heroTile.position);
     if (state.current.camPos) u.uCamPos.value.copy(state.current.camPos);
     u.uTime.value += dt;

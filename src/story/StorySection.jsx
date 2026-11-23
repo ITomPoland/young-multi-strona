@@ -1,43 +1,39 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { motion, useTransform, useMotionValueEvent } from 'framer-motion';
 import { LATEST_RELEASE } from '../data/release';
-import { CHAPTER_RANGES, STORY_SCROLL_VH, CANVAS_FADE_VH } from './story.config';
+import { CHAPTER_RANGES, BEATS, STORY_SCROLL_VH, FALLBACK_FADE_VH, anchorVh } from './story.config';
 import { createStoryState } from './storyState';
+import { hasWebGL } from './webgl';
 import { usePerformance } from '../context/PerformanceContext';
 import './StorySection.css';
 
 const StoryCanvas = lazy(() => import('./StoryCanvas'));
 
-function hasWebGL() {
-  try {
-    const c = document.createElement('canvas');
-    return !!(c.getContext('webgl2') || c.getContext('webgl'));
-  } catch {
-    return false;
-  }
-}
-
-const StorySection = React.forwardRef(function StorySection({ storyVh }, ref) {
+// The story canvas starts at the very top of the page and also draws the hero
+// (Multi, the type, the dust): one renderer from the first frame to the end.
+const StorySection = React.forwardRef(function StorySection({ storyVh, startAnimation = false }, ref) {
   const stateRef = useRef(null);
   if (!stateRef.current) stateRef.current = createStoryState();
   const slotRef = useRef(null);
   const { tier } = usePerformance();
-  const [webgl] = useState(() => (typeof window === 'undefined' ? true : hasWebGL()));
+  const [webgl] = useState(hasWebGL);
 
-  const [singleStart, singleEnd] = CHAPTER_RANGES.single;
+  useEffect(() => {
+    stateRef.current.heroStart = startAnimation;
+  }, [startAnimation]);
+
   const [turnStart] = CHAPTER_RANGES.turn;
-  const singleLen = singleEnd - singleStart;
+  const [inA, inB] = BEATS.textIn;
 
-  // --- DOM overlay timing (scroll-scrubbed, reversible) ---
-  const at = (f) => singleStart + singleLen * f;
-  const overlayOpacity = useTransform(storyVh, [at(0.28), at(0.4), at(0.9), turnStart + 4], [0, 1, 1, 0]);
-  const overlayY = useTransform(storyVh, [at(0.28), at(0.42), at(0.9), turnStart + 4], [26, 0, 0, -18]);
-  const titleBackX = useTransform(storyVh, [at(0.26), at(0.45), turnStart + 10], ['-4%', '0%', '-8%']);
-  const titleFrontX = useTransform(storyVh, [at(0.3), at(0.48), turnStart + 10], ['5%', '0%', '10%']);
-  const interactive = useTransform(storyVh, (v) => (v > at(0.34) && v < turnStart + 2 ? 'auto' : 'none'));
+  // --- DOM overlay timing (scroll-scrubbed, reversible): it lands as the camera catches the tile ---
+  const overlayOpacity = useTransform(storyVh, [inA, inB, turnStart - 14, turnStart + 4], [0, 1, 1, 0]);
+  const overlayY = useTransform(storyVh, [inA, inB + 3, turnStart - 14, turnStart + 4], [26, 0, 0, -18]);
+  const titleBackX = useTransform(storyVh, [inA - 4, inB + 5, turnStart + 10], ['-4%', '0%', '-8%']);
+  const titleFrontX = useTransform(storyVh, [inA + 2, inB + 8, turnStart + 10], ['5%', '0%', '10%']);
+  const interactive = useTransform(storyVh, (v) => (v > inA + 10 && v < turnStart + 2 ? 'auto' : 'none'));
 
   // fallback (no WebGL): a plain cover in the slot
-  const fallbackOpacity = useTransform(storyVh, [CANVAS_FADE_VH[0], CANVAS_FADE_VH[1]], [0, 1]);
+  const fallbackOpacity = useTransform(storyVh, [FALLBACK_FADE_VH[0], FALLBACK_FADE_VH[1]], [0, 1]);
 
   // Mini-player appears once the tile has flown past and stays for the rest of the page
   const [miniVisible, setMiniVisible] = useState(false);
@@ -62,13 +58,38 @@ const StorySection = React.forwardRef(function StorySection({ storyVh }, ref) {
         style={{ height: `calc(${STORY_SCROLL_VH + 100} * 1vh)` }}
       >
         {/* anchor for the menu / SEO: the single lives inside the story */}
-        <span id="nowa-piosenka" className="story-anchor" style={{ top: `calc(${at(0.5)} * 1vh)` }} />
+        <span id="nowa-piosenka" className="story-anchor" style={{ top: `calc(${anchorVh('nowa-piosenka')} * 1vh)` }} />
 
         <div className="story-sticky">
           {webgl ? (
-            <Suspense fallback={null}>
-              <StoryCanvas storyVh={storyVh} state={stateRef} slotRef={slotRef} tier={tier} />
-            </Suspense>
+            <>
+              {/* source of Multi + his matte (stacked); in-viewport non-zero opacity keeps the decoder at full FPS */}
+              <video
+                ref={(el) => {
+                  stateRef.current.video = el;
+                }}
+                src="/hero-stacked.mp4"
+                poster="/hero-poster-stacked.jpg"
+                muted
+                loop
+                playsInline
+                autoPlay
+                preload="auto"
+                className="hero-video-source"
+                aria-hidden="true"
+              />
+              {/* the hero's entrance (was on the old hero canvas) */}
+              <motion.div
+                className="story-canvas-intro"
+                initial={{ opacity: 0.01, scale: 1.08 }}
+                animate={startAnimation ? { opacity: 1, scale: 1 } : { opacity: 0.01, scale: 1.08 }}
+                transition={{ duration: 1.35, delay: 0.05, ease: [0.76, 0, 0.24, 1] }}
+              >
+                <Suspense fallback={null}>
+                  <StoryCanvas storyVh={storyVh} state={stateRef} slotRef={slotRef} tier={tier} />
+                </Suspense>
+              </motion.div>
+            </>
           ) : (
             <motion.div className="story-fallback-bg" style={{ opacity: fallbackOpacity }} />
           )}

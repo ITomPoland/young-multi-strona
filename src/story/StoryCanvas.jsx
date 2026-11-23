@@ -2,11 +2,13 @@ import React, { Suspense, useEffect, useMemo, useRef } from 'react';
 import { Canvas, useLoader } from '@react-three/fiber';
 import * as THREE from 'three';
 import StoryDirector from './StoryDirector';
-import DitherPass from './DitherPass';
+import Compositor from './Compositor';
 import Room from './world/Room';
 import TileWall from './world/TileWall';
 import HeroTile from './world/HeroTile';
+import Motes from './world/Motes';
 import { ensureThreeState } from './storyThree';
+import { markStoryReady } from './storyReady';
 
 function useRawTexture(src) {
   const tex = useLoader(THREE.TextureLoader, src);
@@ -23,11 +25,17 @@ function useRawTexture(src) {
 function World({ state }) {
   const photo = useRawTexture('/hero-empty-room.jpg');
   const cover = useRawTexture('/release-cover.jpg');
+  // textures are in (Suspense resolved): the hero frame can be shown
+  useEffect(() => {
+    const id = requestAnimationFrame(() => requestAnimationFrame(markStoryReady));
+    return () => cancelAnimationFrame(id);
+  }, []);
   return (
     <>
       <Room photo={photo} state={state} />
       <TileWall photo={photo} state={state} />
       <HeroTile photo={photo} cover={cover} state={state} />
+      <Motes state={state} />
     </>
   );
 }
@@ -70,17 +78,16 @@ export default function StoryCanvas({ storyVh, state, slotRef, tier = 'high' }) 
   const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
   const maxDpr = tier === 'low' ? 1 : isTouch ? 1.5 : 1.75;
 
-  // Fade the canvas in over the hero (cheap DOM opacity, no React re-render)
+  // The canvas draws the hero too, so it is visible from the top of the page; it only
+  // hides (and stops rendering) once the story has released on its black frame.
   useEffect(() => {
     let raf;
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const el = wrapRef.current;
       if (!el) return;
-      const s = state.current;
-      const o = s.canvasOpacity;
-      el.style.opacity = String(o);
-      el.style.visibility = s.active && o > 0.001 ? 'visible' : 'hidden';
+      const v = state.current.active ? 'visible' : 'hidden';
+      if (el.style.visibility !== v) el.style.visibility = v;
     };
     tick();
     return () => cancelAnimationFrame(raf);
@@ -88,7 +95,10 @@ export default function StoryCanvas({ storyVh, state, slotRef, tier = 'high' }) 
 
   return (
     <div ref={wrapRef} className="story-canvas-wrap" aria-hidden="true">
+      {/* offsetSize: measure the layout box, NOT the transformed one (the hero entrance
+          scales this wrapper 1.08 -> 1; a scaled measure would offset the whole frame) */}
       <Canvas
+        resize={{ offsetSize: true }}
         flat
         linear
         dpr={[1, maxDpr]}
@@ -99,7 +109,7 @@ export default function StoryCanvas({ storyVh, state, slotRef, tier = 'high' }) 
         <Suspense fallback={null}>
           <World state={state} />
         </Suspense>
-        <DitherPass state={state} glow={tier !== 'low'} />
+        <Compositor state={state} glow={tier !== 'low'} />
       </Canvas>
     </div>
   );

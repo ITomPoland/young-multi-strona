@@ -139,6 +139,11 @@ export const GLSL_HOLE = /* glsl */ `
   }
 `;
 
+// Crack front at the moment the dust has settled: the grout of these tiles is what the
+// dust is drawn into, and what glows when the wall takes the light over. ONE rule for
+// the dust (where the dots land, how many) and the wall (which grout lights up).
+export const HANDOFF_CRACK = 0.22;
+
 // Impact cracks: star-shaped spread from the centre (rays), used by the 3D wall AND by
 // the hero dust, which lands exactly on the grout of the first cracked tiles.
 export const GLSL_CRACKS = /* glsl */ `
@@ -147,5 +152,46 @@ export const GLSL_CRACKS = /* glsl */ `
     float ang = atan(d.y, d.x);
     float rays = 0.62 + 0.75 * abs(sin(ang * 2.5 + 1.3)) * (0.6 + 0.4 * abs(sin(ang * 4.0 + 0.4)));
     return length(d) * rays + tHash(cell * 9.13 + 1.7) * 1.1;
+  }
+  // how lit a tile's grout is when the dust has settled (0..1)
+  float handoffLit(vec2 cell) {
+    float cd = crackDist(cell);
+    return smoothstep(cd - 1.5, cd + 0.4, ${(HANDOFF_CRACK * 12).toFixed(3)});
+  }
+`;
+
+// HDR colour of the grout light (Room grout and the settled dust both use it)
+export const GROUT_LIGHT = 'vec3(0.85, 1.05, 1.15) * 1.7';
+
+// ---------------------------------------------------------------------
+// THE BURST PULSE: the moment the wall gives, a ring of grout light runs out of the hole
+// across the back wall, then along the side walls, floor and ceiling, past the camera.
+// The tile grid is continued in world space on every surface (same pitch as the photo).
+// Needs: uniform float uPulse (0 -> 1 progress, 0 = off). Fragment shader only (fwidth).
+// ---------------------------------------------------------------------
+export const PULSE_REACH = 9.5; // metres the ring travels
+export const GLSL_PULSE = /* glsl */ `
+  // ring of light around the hole at the current pulse radius (+ a short afterglow)
+  float pulseRing(vec3 p) {
+    if (uPulse <= 0.0 || uPulse >= 1.0) return 0.0;
+    // eases out: bursts off the wall, then rolls along the room more slowly
+    float r = (1.0 - pow(1.0 - uPulse, 1.6)) * ${PULSE_REACH.toFixed(2)};
+    float d = length(p - vec3(${HOLE_CENTER.x.toFixed(3)}, ${HOLE_CENTER.y.toFixed(3)}, ${WALL_Z.toFixed(4)}));
+    float ring = exp(-pow((d - r) / 0.35, 2.0));
+    return ring * (1.0 - smoothstep(0.5, 1.0, uPulse));
+  }
+
+  // grout lines of the world-space tile grid on a surface with normal n (0..1)
+  float worldGrout(vec3 p, vec3 n) {
+    vec3 g = vec3(
+      (p.x - ${WALL_LEFT.toFixed(4)}) / ${PITCH_X.toFixed(4)},
+      (${WALL_TOP.toFixed(4)} - p.y) / ${PITCH_Y.toFixed(4)},
+      (p.z - ${WALL_Z.toFixed(4)}) / ${PITCH_X.toFixed(4)}
+    );
+    vec3 f = abs(fract(g + 0.5) - 0.5);
+    vec3 fw = max(fwidth(g), vec3(1e-4));
+    vec3 w = max(vec3(0.035), fw * 0.9); // the real grout width, never under ~1px
+    vec3 l = (1.0 - smoothstep(w, w + fw, f)) * step(abs(n), vec3(0.5));
+    return max(max(l.x, l.y), l.z);
   }
 `;

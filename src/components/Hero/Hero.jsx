@@ -1,30 +1,39 @@
 // Plik: /src/components/Hero/Hero.jsx
 
-import React, { forwardRef } from 'react';
-import { motion } from 'framer-motion';
+import React, { forwardRef, useState } from 'react';
 import './Hero.css';
-import HeroVideoShader from './HeroVideoShader';
+import { hasWebGL } from '../../story/webgl';
 
-// Story chapter S0–S1. `transitionProgress` (0 -> 0.5) comes from the story timeline:
-// Multi dissolves, his dust is pulled into the back wall, then the 3D StoryCanvas
-// takes over on an identical empty-room frame (see src/story/story.config.js).
-const Hero = forwardRef(function Hero({ transitionProgress, startAnimation = false }, ref) {
+// Story chapter S0. The hero is DRAWN by the story canvas (src/story/StoryCanvas.jsx):
+// the room, Multi, the YOUNG MULTI type and his dust live in the same renderer as the
+// rest of the story, so there is no hand-off between two canvases. This section only
+// holds the semantic H1, the dark backdrop and the no-WebGL fallback.
+const Hero = forwardRef(function Hero(_props, ref) {
+  const [webgl] = useState(hasWebGL);
+
   return (
-    <motion.section ref={ref} className="hero-section" data-header-theme="dark">
+    <section ref={ref} className="hero-section" data-header-theme="dark">
       {/* Semantic H1 for SEO & screen readers (visual display type is composited inside WebGL) */}
       <h1 className="hero-sr-only">YOUNG MULTI</h1>
 
-      <div className="hero-content-wrapper">
-        <motion.div
-          className="hero-video-stage"
-          initial={{ opacity: 0.01, scale: 1.08 }}
-          animate={startAnimation ? { opacity: 1, scale: 1 } : { opacity: 0.01, scale: 1.08 }}
-          transition={{ duration: 1.35, delay: 0.05, ease: [0.76, 0, 0.24, 1] }}
-        >
-          <HeroVideoShader startAnimation={startAnimation} transitionProgress={transitionProgress} />
-        </motion.div>
-      </div>
-    </motion.section>
+      {!webgl && (
+        <div className="hero-content-wrapper">
+          <div className="hero-video-stage">
+            <video
+              src="/hero-stacked.mp4"
+              poster="/hero-poster-stacked.jpg"
+              muted
+              loop
+              playsInline
+              autoPlay
+              preload="auto"
+              className="hero-video-fallback"
+              aria-hidden="true"
+            />
+          </div>
+        </div>
+      )}
+    </section>
   );
 });
 
