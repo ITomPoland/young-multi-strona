@@ -1,15 +1,13 @@
 import React, { useRef, forwardRef } from 'react';
 import { motion, useScroll, useTransform, useMotionValueEvent } from 'framer-motion';
 import './NewSong.css';
-import Gramophone from '../Gramophone/Gramophone';
 import About from '../About/About';
 import SmokeTransition from '../SmokeTransition/SmokeTransition';
 import { LEGACY_START, NEWSONG_SCROLL_VH } from './timeline';
 
 // =====================================================================
-// After the story (S1–S4 lite) the camera has dived into the hole -> black frame.
-// This section continues from that black frame: Discography -> About -> Smoke -> Merch.
-// (Phase 2 of the rebuild replaces the discography with the 3D album ring.)
+// After the story (which ends on the album tower, S5) -> black frame.
+// This section continues from that black frame: About -> Smoke -> Merch.
 // ---------------------------------------------------------------------
 
 const NewSong = forwardRef((props, ref) => {
@@ -35,10 +33,9 @@ const NewSong = forwardRef((props, ref) => {
 
   // === 1. ENTRANCE FROM THE STORY'S BLACK FRAME ===
   const blackVeil = useTransform(scrollYProgress, [0, 0.035], [1, 0]);
-  const gramophoneEntranceScale = useTransform(scrollYProgress, [0, 0.06], [1.06, 1]);
   const viewportPointerEvents = useTransform(scrollYProgress, (v) => (v > 0.02 ? 'auto' : 'none'));
 
-  // === 2. CARDS SCATTER -> RISING STAGE (ABOUT) ===
+  // === 2. RISING STAGE (ABOUT) ===
   const aboutEnterProgress = useTransform(contentProgress, [0.61, 0.75], [0, 1]);
   const aboutLayerOpacity = useTransform(contentProgress, [0.605, 0.64], [0, 1]);
   const aboutPointerEvents = useTransform(contentProgress, (v) => (v >= 0.67 ? 'auto' : 'none'));
@@ -62,15 +59,6 @@ const NewSong = forwardRef((props, ref) => {
     >
       <motion.div className="newsong-sticky-viewport" style={{ pointerEvents: viewportPointerEvents }}>
         <div className="newsong-stage">
-          {/* LAYER 1: DISCOGRAPHY */}
-          <div className="newsong-gramophone-layer">
-            <Gramophone
-              contentProgress={contentProgress}
-              isMenuOpen={props.isMenuOpen}
-              style={{ scale: gramophoneEntranceScale, willChange: 'transform' }}
-            />
-          </div>
-
           {/* LAYER 2: RISING STAGE (ABOUT) */}
           <motion.div
             className="newsong-about-layer"

@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock } from './story.config';
-import { PHOTO } from './world/calibration';
+import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock, albumFocus, ALBUM_SPACING, ALBUM_RISE, ORBIT_START_VH } from './story.config';
+import { PHOTO, TOWER } from './world/calibration';
 import { REST_SIZE, heroTileAt } from './storyThree';
 
 // =====================================================================
@@ -83,14 +83,20 @@ export default function StoryDirector({ storyVh, state }) {
     const aspect = size.width / Math.max(size.height, 1);
     const B = BEATS.burst;
     const CAUGHT = BEATS.caught;
-    const [turnStart, turnEnd] = CHAPTER_RANGES.turn;
+    const [turnStart] = CHAPTER_RANGES.turn;
+    const [, albumsEnd] = CHAPTER_RANGES.albums;
 
     // one canvas from the hero to the end of the story
-    s.active = vh <= turnEnd + 2;
+    s.active = vh <= albumsEnd + 2;
     s.tr = heroTr(vh);
     const d = chapterProgress('turn', vh);
     s.single = chapterProgress('single', vh);
     s.turn = d;
+    // album tower: focus (-1 = the hole, i = album i), how far out we are, dither -> clean
+    const ringIn = smooth(ORBIT_START_VH, ORBIT_START_VH + 95, vh);
+    s.albumFocus = albumFocus(vh);
+    s.ring = vh > turnStart ? 1 : 0;
+    s.clean = smooth(ORBIT_START_VH + 12, ORBIT_START_VH + 80, vh);
 
     // --- charge: ONE crack front, from the first settled dust straight into the burst ---
     s.crack = crackFront(vh) / 12;
@@ -109,7 +115,7 @@ export default function StoryDirector({ storyVh, state }) {
     const startOff = PHOTO.cy - PHOTO.height / 2;
     const lensOff = THREE.MathUtils.lerp(startOff, 0, smooth(B - 15, B + 35, vh));
     const punchPeak = smooth(B, B + 8, vh) * (1 - smooth(B + 14, B + 50, vh));
-    const zoom = 1 - punchPeak * 0.12 - Math.sin(m * Math.PI) * 0.16;
+    const zoom = (1 - punchPeak * 0.12 - Math.sin(m * Math.PI) * 0.16) * (1 + ringIn * 0.12);
     const frustum = applyLens(camera, aspect, lensOff, zoom);
 
     // (A) base path: creeps in while the charge builds, punches in on the burst
@@ -164,9 +170,9 @@ export default function StoryDirector({ storyVh, state }) {
     _lockPos.copy(_tilePos).sub(_v.set(sx * dist, sy * dist + Math.sin(time * 0.8) * 0.002 * holdW, -dist).applyQuaternion(_lockQuat));
 
     // (C) the whip: from wherever we let go of the tile, through the hole, 180° around
-    _endQuat.setFromEuler(_e.set(0, Math.PI + (easeOutCubic(clamp01((d - 0.6) / 0.4)) * 2.5 * DEG), 0, 'YXZ'));
-    const after = easeOutCubic(clamp01((d - 0.6) / 0.4));
-    _endPos.set(0, 0, -7.1 - after * 0.45);
+    // (from ORBIT_START_VH, d = 0.6, the tower orbit (D) takes over, already moving)
+    _endQuat.setFromEuler(_e.set(0, Math.PI, 0, 'YXZ'));
+    _endPos.set(0, 0, -7.1);
 
     // ONE move: from the impact straight to the catch pose, arriving as time has slowed
     const meet = easeInOutCubic(clamp01((vh - (B + 2)) / (CAUGHT - (B + 2))));
@@ -181,10 +187,29 @@ export default function StoryDirector({ storyVh, state }) {
       camera.quaternion.multiply(_q.setFromAxisAngle(_v.set(0, 0, 1), -arc * 7 * DEG));
     }
     camera.position.x += shakeX * (1 - meet);
+
+    // (D) THE TOWER: out of the wound without stopping -> away from it, up, and round the
+    // tower past the album billboards (same turning direction as the 180° turn)
+    if (vh > ORBIT_START_VH) {
+      const f = s.albumFocus;
+      const phi = (f + 1) * ALBUM_SPACING;
+      const startR = TOWER.z + 7.1; // where the turn left us (z = -7.1), measured from the axis
+      const r = startR + 2.9 * (1 - Math.pow(1 - ringIn, 2)) + Math.sin(time * 0.21) * 0.04 * ringIn;
+      const y = (f + 1) * ALBUM_RISE + 0.55 * ringIn + Math.sin(time * 0.37) * 0.03 * ringIn;
+      camera.position.set(TOWER.x - Math.sin(phi) * r, y, TOWER.z - Math.cos(phi) * r);
+      // look at the tower, a touch below the camera (we come from above onto each billboard)
+      const lookY = (f + 1) * ALBUM_RISE + 0.12 * ringIn;
+      const pitch = Math.atan2(lookY - y, r);
+      // on wide screens the billboard sits right of centre, leaving room for its title
+      const sideOffset = 0.17 * clamp01((aspect - 0.9) / 0.6) * ringIn;
+      _e.set(pitch + p.sy * 0.03 * ringIn, Math.PI + phi + sideOffset - p.sx * 0.045 * ringIn, 0, 'YXZ');
+      camera.quaternion.setFromEuler(_e);
+    }
     camera.updateMatrixWorld();
     s.camPos.copy(camera.position);
 
-    s.black = smooth(0.84, 0.98, d);
+    // black at the very end, where the next section takes over
+    s.black = smooth(albumsEnd - 34, albumsEnd - 4, vh);
 
     // --- the tile's print burns in while it tumbles toward us ---
     const e = easeOutCubic(clamp01((vh - (B + 3)) / (CAUGHT - (B + 3))));

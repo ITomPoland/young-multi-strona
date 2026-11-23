@@ -153,7 +153,8 @@ export default function Compositor({ state, glow = true }) {
         uTrailAmt: { value: 1 },
         uTextReveal: { value: 0 },
         uTextFront: { value: 0 },
-        uDustOn: { value: 0 }
+        uDustOn: { value: 0 },
+        uClean: { value: 0 }
       }
     });
     const compScene = new THREE.Scene();
@@ -404,6 +405,7 @@ export default function Compositor({ state, glow = true }) {
     u.uTextReveal.value = textReveal.current;
     u.uTextFront.value = isTextFront(size.width, size.height) ? 1 : 0;
     u.uDustOn.value = dustOn ? 1 : 0;
+    u.uClean.value = s.clean;
 
     gl.setRenderTarget(null);
     gl.render(passes.compScene, passes.orthoCam);

@@ -4,6 +4,7 @@ import { LATEST_RELEASE } from '../data/release';
 import { CHAPTER_RANGES, BEATS, STORY_SCROLL_VH, FALLBACK_FADE_VH, anchorVh } from './story.config';
 import { createStoryState } from './storyState';
 import { hasWebGL } from './webgl';
+import AlbumsOverlay from './AlbumsOverlay';
 import { usePerformance } from '../context/PerformanceContext';
 import './StorySection.css';
 
@@ -40,7 +41,10 @@ const StorySection = React.forwardRef(function StorySection({ storyVh, startAnim
   useMotionValueEvent(storyVh, 'change', (v) => {
     // ...but steps aside on the final screen so it never covers the footer
     const nearEnd = window.scrollY + window.innerHeight * 1.6 > document.documentElement.scrollHeight;
-    const show = v > turnStart + 30 && !nearEnd;
+    // ...and while the album ring is on screen (it has its own titles bottom-left)
+    const [albumsStart, albumsEnd] = CHAPTER_RANGES.albums;
+    const onRing = v > albumsStart - 40 && v < albumsEnd;
+    const show = v > turnStart + 30 && !nearEnd && !onRing;
     setMiniVisible((prev) => (prev === show ? prev : show));
   });
 
@@ -57,8 +61,9 @@ const StorySection = React.forwardRef(function StorySection({ storyVh, startAnim
         data-header-theme="dark"
         style={{ height: `calc(${STORY_SCROLL_VH + 100} * 1vh)` }}
       >
-        {/* anchor for the menu / SEO: the single lives inside the story */}
+        {/* anchors for the menu / SEO: the single and the discography live inside the story */}
         <span id="nowa-piosenka" className="story-anchor" style={{ top: `calc(${anchorVh('nowa-piosenka')} * 1vh)` }} />
+        <span id="albumy" className="story-anchor" style={{ top: `calc(${anchorVh('dyskografia')} * 1vh)` }} />
 
         <div className="story-sticky">
           {webgl ? (
@@ -151,6 +156,9 @@ const StorySection = React.forwardRef(function StorySection({ storyVh, startAnim
               </motion.aside>
             </div>
           </motion.div>
+
+          {/* === S5: album ring === */}
+          {webgl && <AlbumsOverlay storyVh={storyVh} />}
         </div>
       </section>
 

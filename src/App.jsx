@@ -96,7 +96,7 @@ function HomePage() {
         scrollPosition = storyVhToScroll(anchorVh('nowa-piosenka'));
         break;
       case 'dyskografia':
-        scrollPosition = newSongPos(legacyToLocal(0.3));
+        scrollPosition = storyVhToScroll(anchorVh('dyskografia'));
         break;
       case 'o-mnie':
         scrollPosition = newSongPos(legacyToLocal(0.76));

@@ -195,3 +195,21 @@ export const GLSL_PULSE = /* glsl */ `
     return max(max(l.x, l.y), l.z);
   }
 `;
+
+// ---------------------------------------------------------------------
+// THE TOWER (S5): the room we were in is INSIDE a tall dark cylinder. The hole we fly out
+// of is a wound in its skin (same ragged outline as the hole in the wall). Outside, the
+// albums are curved billboards on the cylinder, spiralling up (Times Square on a tower),
+// and the camera keeps flying: away from the hole, up, and around.
+// Angles: phi = 0 is the side of the hole (-Z from the axis); positive phi turns the same
+// way as the 180° turn did. A point at (phi, y) on radius r:
+//   x = TOWER.x - sin(phi) * r,  z = TOWER.z - cos(phi) * r
+// ---------------------------------------------------------------------
+export const TOWER = {
+  x: 0,
+  z: (WALL_Z + 1.5) / 2, // centre of the room box (back wall -> front wall at z = 1.5)
+  radius: 4.45, // encloses the whole room incl. the wall slab
+  bottom: -14,
+  top: 26
+};
+export const TOWER_HOLE_SCALE = 1.08; // the skin's wound is a little wider than the wall's

@@ -180,6 +180,7 @@ export const COMPOSITE_FRAG = /* glsl */ `
   uniform float uTextReveal;
   uniform float uTextFront; // 0 = type behind Multi (landscape), 1 = in front (portrait / phones)
   uniform float uDustOn;
+  uniform float uClean;     // 0 = dithered story look, 1 = clean image (album ring)
   varying vec2 vUv;
 
   const float ZERO = 128.0 / 255.0;
@@ -251,7 +252,7 @@ export const COMPOSITE_FRAG = /* glsl */ `
     vec3 dithered = applyDigitalDither(soft, cellCoord, 0.0);
     // alpha < 1 marks pixels that must show raw colour (the hovered cover)
     vec3 raw = min(centerTex.rgb, vec3(1.0));
-    vec3 col = mix(raw, dithered, step(0.5, centerTex.a));
+    vec3 col = mix(raw, dithered, step(0.5, centerTex.a) * (1.0 - uClean));
 
     // mouse smear reveals the raw, chromatic room under the cursor
     if (revealMask > 0.001) {

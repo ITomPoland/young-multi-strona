@@ -7,13 +7,16 @@
 // The motion is ONE continuous piece: no phase waits for the previous one to finish.
 //   dust gathers -> its grout lights up tile by tile while the cracks already spread ->
 //   burst (light pulse through the room) -> the camera catches the single's tile in the
-//   air as time slows down -> living bullet time -> the whip through the hole.
+//   air as time slows down -> living bullet time -> the whip through the hole ->
+//   behind the wall the hole is one window of a dark cylinder: the camera keeps turning
+//   from it to the albums hung on the same cylinder, and the dither gives way to a clean image.
 
 export const STORY_CHAPTERS = [
   { id: 'dissolve', vh: 100 }, // S1: Multi turns to dust that is drawn into the grout
   { id: 'explode', vh: 75 }, // S2: charge peaks, burst, the camera catches the tile
   { id: 'single', vh: 145, anchor: 'nowa-piosenka', anchorAt: 0.15 }, // S3: bullet time + the single
-  { id: 'turn', vh: 140 } // S4: speed ramp, through the hole, 180° -> the room seen from behind -> black
+  { id: 'turn', vh: 140 }, // S4: speed ramp, through the hole, 180° -> the room seen from behind
+  { id: 'albums', vh: 360, anchor: 'dyskografia', anchorAt: 0.2 } // S5: the album ring -> black
 ];
 
 // Key moments (absolute story-vh)
@@ -110,6 +113,38 @@ export function burstClock(storyVh) {
   const k = Math.min(Math.floor(x), BURST_LUT.length - 2);
   const f = Math.min(x - k, 1);
   return BURST_LUT[k] + (BURST_LUT[k + 1] - BURST_LUT[k]) * f;
+}
+
+// ---------------------------------------------------------------------
+// ALBUM TOWER (S5): no stop at the hole. The orbit starts while the turn is still
+// finishing (ORBIT_START_VH) and flies on: away from the hole, up, around the tower.
+// albumFocus: -1 = the hole, i = album i on the spiral, continuing a bit past the last.
+// Between albums the speed eases down to ~55% (a linger) but never to zero.
+// ---------------------------------------------------------------------
+export const ALBUM_COUNT = 4;
+export const ORBIT_START_VH = CHAPTER_RANGES.turn[0] + (CHAPTER_RANGES.turn[1] - CHAPTER_RANGES.turn[0]) * 0.6;
+export const FIRST_ALBUM_VH = CHAPTER_RANGES.albums[0] + 30;
+export const ALBUM_STEP_VH = 80;
+export const ALBUM_SPACING = (72 * Math.PI) / 180; // around the tower
+export const ALBUM_RISE = 2.0; // metres up the tower per album
+
+const linger = (t) => {
+  const s = clamp01(t);
+  return s * 0.55 + s * s * s * (s * (s * 6 - 15) + 10) * 0.45;
+};
+
+export function albumFocus(storyVh) {
+  if (storyVh <= ORBIT_START_VH) return -1;
+  if (storyVh < FIRST_ALBUM_VH) {
+    // leaves the hole already moving (half linear), eases onto the first album
+    const t = (storyVh - ORBIT_START_VH) / (FIRST_ALBUM_VH - ORBIT_START_VH);
+    const s = clamp01(t);
+    return -1 + (s * 0.5 + (1 - Math.pow(1 - s, 2)) * 0.5);
+  }
+  const u = (storyVh - FIRST_ALBUM_VH) / ALBUM_STEP_VH;
+  const i = Math.floor(u);
+  if (i >= ALBUM_COUNT - 1) return ALBUM_COUNT - 1 + (u - (ALBUM_COUNT - 1)) * 0.55; // keeps flying
+  return i + linger(u - i);
 }
 
 // Local 0..1 progress of a chapter for a given story-vh value

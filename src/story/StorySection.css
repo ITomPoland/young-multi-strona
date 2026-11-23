@@ -480,3 +480,63 @@
     transform: none;
   }
 }
+
+/* ---------- S5 album ring overlay ---------- */
+.story-albums {
+  position: absolute;
+  inset: 0;
+  height: 100svh;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.story-albums-head {
+  position: absolute;
+  top: calc(var(--top) + 1.5rem);
+  left: var(--pad-x);
+  right: var(--pad-x);
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Antonio', sans-serif;
+  font-size: clamp(0.75rem, 1vw, 1rem);
+  letter-spacing: 0.32em;
+  color: rgba(228, 238, 242, 0.62);
+}
+
+.story-albums-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.story-albums-name {
+  position: absolute;
+  left: var(--pad-x);
+  bottom: var(--bottom);
+  max-width: min(46rem, 80vw);
+}
+
+.story-albums-year {
+  display: block;
+  font-family: 'Antonio', sans-serif;
+  font-size: clamp(0.8rem, 1.1vw, 1.1rem);
+  letter-spacing: 0.3em;
+  color: rgba(228, 238, 242, 0.6);
+  margin-bottom: 0.4em;
+}
+
+.story-albums-title {
+  margin: 0;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.3rem, min(5.8vw, 10svh), 7.5rem);
+  line-height: 0.92;
+  letter-spacing: 0.01em;
+  color: #f1f5f7;
+}
+
+.story-albums-note {
+  margin: 0.8em 0 0;
+  font-size: clamp(0.85rem, 1vw, 1rem);
+  color: rgba(228, 238, 242, 0.7);
+  letter-spacing: 0.04em;
+}

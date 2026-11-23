@@ -1,5 +1,5 @@
 /* Plik: /src/components/NewSong/NewSong.css
-   Discography -> About -> Smoke -> Merch, continuing from the story's black frame. */
+   About -> Smoke -> Merch, continuing from the story's black frame. */
 
 .newsong-section {
   position: relative;
@@ -20,12 +20,6 @@
 .newsong-stage {
   position: absolute;
   inset: 0;
-}
-
-.newsong-gramophone-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 6;
 }
 
 .newsong-about-layer {

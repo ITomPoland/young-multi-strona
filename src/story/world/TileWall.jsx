@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
   TILE_COLS, TILE_ROWS, PITCH_X, PITCH_Y, WALL_Z, WALL_LEFT, WALL_TOP,
-  TILE_THICKNESS, HOLE_CENTER, HERO_CELL, GLSL_PHOTO_PROJECTION, GLSL_TILE_STATE,
+  TILE_THICKNESS, HOLE_CENTER, HERO_CELL, SLAB_BACK_Z, GLSL_PHOTO_PROJECTION, GLSL_TILE_STATE,
   GLSL_CRACKS, GLSL_HOLE, GLSL_PULSE, GROUT_LIGHT
 } from './calibration';
 import { getHoleTexture } from './hole';
@@ -25,6 +25,7 @@ const VERT = /* glsl */ `
   uniform sampler2D uHole;
   uniform vec3 uHeroPos;  // the single's tile: debris flows around it instead of through it
   uniform vec3 uCamPos;   // ...and around the lens when the camera flies through the debris
+  uniform float uClean;   // album ring: debris that flew behind the wall clears out of the way
 
   varying vec3 vRestWorld;
   varying vec2 vUv;
@@ -126,6 +127,8 @@ const VERT = /* glsl */ `
       offset = c - center;
     }
 
+    // on the album ring the debris behind the wall shrinks away with the dither
+    if (center.z + offset.z < ${(SLAB_BACK_Z - 0.05).toFixed(4)}) local *= 1.0 - uClean;
     vec3 world = center + local + offset;
     // fake key light from the camera side + soft fill, == 1.0 for an untouched tile
     vec3 nW = normalize(n);
@@ -240,7 +243,8 @@ export default function TileWall({ photo, state }) {
       uHeroCell: { value: new THREE.Vector2(HERO_CELL.x, HERO_CELL.y) },
       uHole: { value: getHoleTexture() },
       uHeroPos: { value: new THREE.Vector3(0, 0, 99) },
-      uCamPos: { value: new THREE.Vector3(0, 0, 99) }
+      uCamPos: { value: new THREE.Vector3(0, 0, 99) },
+      uClean: { value: 0 }
     }),
     [photo]
   );
@@ -251,6 +255,7 @@ export default function TileWall({ photo, state }) {
     u.uCrack.value = state.current.crack;
     u.uBurst.value = state.current.burst;
     u.uPulse.value = state.current.pulse;
+    u.uClean.value = state.current.clean;
     if (state.current.heroTile) u.uHeroPos.value.copy(state.current.heroTile.position);
     if (state.current.camPos) u.uCamPos.value.copy(state.current.camPos);
     u.uTime.value += dt;

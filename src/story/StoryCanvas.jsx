@@ -7,6 +7,7 @@ import Room from './world/Room';
 import TileWall from './world/TileWall';
 import HeroTile from './world/HeroTile';
 import Motes from './world/Motes';
+import Tower from './world/Tower';
 import { ensureThreeState } from './storyThree';
 import { markStoryReady } from './storyReady';
 
@@ -36,6 +37,7 @@ function World({ state }) {
       <TileWall photo={photo} state={state} />
       <HeroTile photo={photo} cover={cover} state={state} />
       <Motes state={state} />
+      <Tower state={state} />
     </>
   );
 }

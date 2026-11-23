@@ -9,6 +9,9 @@ export function createStoryState() {
     active: true,
     tr: 0, // hero clock 0 -> 0.5 (Multi dissolves, dust into the grout)
     pulse: 0, // burst light pulse through the room 0 -> 1
+    albumFocus: -1, // album ring: -1 = the hole, i = album i
+    ring: 0, // 1 once the album ring can be seen (from the turn on)
+    clean: 0, // 0 = dithered story look, 1 = clean image (album ring)
     heroStart: false, // preloader done: the hero type reveals
     video: null, // the stacked hero video element (Multi + matte)
     crack: 0,
