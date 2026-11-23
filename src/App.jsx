@@ -1,7 +1,7 @@
 // Plik: /src/App.jsx
 
 import React, { useState, useRef, useCallback, Suspense, lazy } from 'react';
-import { AnimatePresence, useScroll } from 'framer-motion';
+import { AnimatePresence, useTransform } from 'framer-motion';
 
 // Critical components - load immediately
 import Hero from './components/Hero/Hero';
@@ -14,6 +14,10 @@ import FanBanner from './components/FanBanner/FanBanner';
 // import NoiseOverlay from './components/NoiseOverlay/NoiseOverlay'; // DISABLED
 import useAdaptiveFavicon from './hooks/useAdaptiveFavicon';
 import head1Img from './assets/head1.avif'; // Explicit import for preload
+import StorySection from './story/StorySection';
+import { useStoryVh, storyVhToScroll, viewportMetrics } from './story/useStoryScroll';
+import { HERO_TR_END_VH, anchorVh } from './story/story.config';
+import { legacyToLocal } from './components/NewSong/timeline';
 
 // Lazy-loaded components - load when needed (below the fold)
 const NewSong = lazy(() => import('./components/NewSong/NewSong'));
@@ -45,13 +49,16 @@ function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const { scrollY } = useScroll();
+  // One scroll clock for the whole story (scroll position in vh)
+  const storyVh = useStoryVh();
+  const heroTransition = useTransform(storyVh, [0, HERO_TR_END_VH], [0, 0.5], { clamp: true });
 
   // === ADAPTIVE FAVICON ===
   useAdaptiveFavicon();
 
   // === SECTION REFS FOR DYNAMIC NAVIGATION ===
   const heroRef = useRef(null);
+  const storyRef = useRef(null);
   const newSongRef = useRef(null);
   const merchRef = useRef(null);
   const contactRef = useRef(null);
@@ -76,35 +83,34 @@ function HomePage() {
       return;
     }
 
-    // For sections inside NewSong, calculate scroll position based on percentage
-    if (newSongRef?.current) {
-      const newSongTop = newSongRef.current.offsetTop;
-      const newSongHeight = newSongRef.current.offsetHeight;
+    // Chapters inside the story / discography are addressed by their timeline position
+    const vhPx = viewportMetrics.vhPx;
+    const newSongPos = (localProgress) => {
+      const el = newSongRef.current;
+      if (!el) return 0;
+      return el.offsetTop + (el.offsetHeight - vhPx * 100) * localProgress;
+    };
 
-      let scrollPosition = 0;
-
-      switch (sectionId) {
-        case 'nowa-piosenka':
-          scrollPosition = newSongTop + (newSongHeight * 0.14);
-          break;
-        case 'dyskografia':
-          scrollPosition = newSongTop + (newSongHeight * 0.29);
-          break;
-        case 'o-mnie':
-          scrollPosition = newSongTop + (newSongHeight * 0.76);
-          break;
-        case 'merch':
-          if (merchRef?.current) {
-            scrollPosition = merchRef.current.offsetTop;
-          }
-          break;
-        default:
-          scrollPosition = 0;
-      }
-
-      // TELEPORT: Instant scroll as requested
-      window.scrollTo({ top: scrollPosition, behavior: 'auto' });
+    let scrollPosition = 0;
+    switch (sectionId) {
+      case 'nowa-piosenka':
+        scrollPosition = storyVhToScroll(anchorVh('nowa-piosenka'));
+        break;
+      case 'dyskografia':
+        scrollPosition = newSongPos(legacyToLocal(0.3));
+        break;
+      case 'o-mnie':
+        scrollPosition = newSongPos(legacyToLocal(0.76));
+        break;
+      case 'merch':
+        scrollPosition = merchRef.current ? merchRef.current.offsetTop : 0;
+        break;
+      default:
+        scrollPosition = 0;
     }
+
+    // TELEPORT: instant scroll
+    window.scrollTo({ top: scrollPosition, behavior: 'auto' });
 
     // Close menu with delay to allow exit animation
     setTimeout(() => setIsMenuOpen(false), 300);
@@ -114,6 +120,7 @@ function HomePage() {
   React.useEffect(() => {
     // 1. Code Splitting Preload
     import('./components/NewSong/NewSong');
+    import('./story/StoryCanvas');
     import('./components/Merch/Merch');
     import('./components/Contact/Contact');
 
@@ -177,7 +184,8 @@ function HomePage() {
         </AnimatePresence>
 
         <main>
-          <Hero ref={heroRef} scrollY={scrollY} startAnimation={!isLoading} />
+          <Hero ref={heroRef} transitionProgress={heroTransition} startAnimation={!isLoading} />
+          <StorySection ref={storyRef} storyVh={storyVh} />
           <Suspense fallback={null}>
             <NewSong ref={newSongRef} isMenuOpen={isMenuOpen} />
             <Merch ref={merchRef} />

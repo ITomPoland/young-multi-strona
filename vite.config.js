@@ -27,7 +27,8 @@ export default defineConfig({
         manualChunks: {
           'react-vendor': ['react', 'react-dom'],
           'framer-motion': ['framer-motion'],
-          'utils': ['gsap', 'react-icons']
+          'utils': ['gsap', 'react-icons'],
+          'three': ['three', '@react-three/fiber']
         }
       }
     }

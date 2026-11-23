@@ -129,7 +129,7 @@
   font-family: "Antonio", sans-serif;
   width: 46.875vw;
   /* 900px / 1920px */
-  max-width: 900px;
+  max-width: 56rem; /* 900px @16px root, grows on TVs */
   /* Keep max width for super large screens if desired, or remove for pure fluid */
   margin: 0 auto 20px auto;
   height: auto;
@@ -218,7 +218,7 @@
 .album-cover-standard-container {
   position: relative;
   width: 100%;
-  max-width: 300px;
+  max-width: 18.75rem;
   aspect-ratio: 1 / 1;
   border-radius: 10px;
   overflow: hidden;
@@ -237,7 +237,7 @@
 
 .cover-placeholder {
   width: 100%;
-  max-width: 300px;
+  max-width: 18.75rem;
   aspect-ratio: 1 / 1;
   border-radius: 10px;
   background-color: #ddd;
@@ -303,7 +303,7 @@
 .album-cover-flip-container {
   position: relative;
   width: 100%;
-  max-width: 300px;
+  max-width: 18.75rem;
   aspect-ratio: 1 / 1;
   perspective: 1000px;
   transform-style: preserve-3d;

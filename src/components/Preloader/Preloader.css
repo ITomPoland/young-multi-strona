@@ -47,9 +47,10 @@
 /* MINIMALIST LOGO WRAPPER */
 .minimal-logo-wrapper {
   position: relative;
-  width: 200px;
-  /* Adjust based on logo aspect ratio */
-  height: 160px;
+  /* fluid: ~200x160 on a laptop, bigger on TVs, smaller on small phones */
+  --logo-w: clamp(140px, calc(60px + 10vw), 380px);
+  width: var(--logo-w);
+  height: calc(var(--logo-w) * 0.8);
   margin-bottom: 2rem;
 }
 
@@ -78,9 +79,9 @@
   position: absolute;
   bottom: 0;
   left: 0;
-  width: 200px;
-  /* Fixed match to wrapper */
-  height: 160px;
+  width: var(--logo-w);
+  /* matches the wrapper */
+  height: calc(var(--logo-w) * 0.8);
   object-fit: contain;
   opacity: 1;
 }

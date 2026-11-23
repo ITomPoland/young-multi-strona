@@ -10,15 +10,15 @@
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.78);
   font-family: var(--font-heading), sans-serif;
-  font-size: 0.78rem;
+  font-size: clamp(0.64rem, 0.55rem + 0.22vw, 1.05rem);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   box-sizing: border-box;
-  padding: 0.45rem 1.5rem;
+  padding: 0.45rem clamp(0.65rem, 2vw, 3rem);
 }
 
 .fan-banner-inner {
-  max-width: 1600px;
+  max-width: min(100%, 120rem);
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -37,7 +37,7 @@
 .fan-banner-badge {
   background: var(--color-accent-primary, #ff3333);
   color: #fff;
-  font-size: 0.65rem;
+  font-size: 0.84em;
   font-weight: 700;
   letter-spacing: 0.1em;
   padding: 0.12rem 0.45rem;

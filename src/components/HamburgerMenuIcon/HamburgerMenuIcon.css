@@ -56,3 +56,29 @@
     height: 2px;
   }
 }
+/* Big monitors / TVs: scale the whole icon uniformly (the open/close animation
+   uses fixed px offsets, so scaling the box keeps the X perfectly aligned). */
+@media (min-width: 1800px) {
+  .hamburger-menu-icon {
+    scale: 1.2;
+  }
+}
+
+@media (min-width: 2400px) {
+  .hamburger-menu-icon {
+    scale: 1.5;
+  }
+}
+
+@media (min-width: 3200px) {
+  .hamburger-menu-icon {
+    scale: 1.9;
+  }
+}
+
+/* short landscape phones: slim hit box (bars & animation unchanged) */
+@media (max-height: 500px) and (min-aspect-ratio: 1/1) {
+  .hamburger-menu-icon {
+    height: 44px;
+  }
+}

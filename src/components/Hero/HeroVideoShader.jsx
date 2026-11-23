@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { GLSL_TILE_STATE, GLSL_CRACKS, HOLE_CELL } from '../../story/world/calibration';
 
 const QUAD_VERT = `
   attribute vec2 a_position;
@@ -81,17 +82,16 @@ const DISPLAY_FRAG = `
   uniform sampler2D u_video;
   uniform sampler2D u_trail;
   uniform sampler2D u_text;
-  uniform sampler2D u_release;
   uniform sampler2D u_emptyRoom;
   uniform vec2 u_resolution;
   uniform vec2 u_videoRes;
   uniform vec2 u_parallax;
-  uniform vec2 u_targetHalf;
-  uniform vec2 u_targetCenter;
   uniform float u_time;
   uniform float u_dpr;
   uniform float u_textReveal;
   uniform float u_transition;
+  // 0 = typography sits BEHIND Multi (landscape), 1 = IN FRONT of Multi (portrait / phones)
+  uniform float u_textFront;
 
   const float ZERO = 128.0 / 255.0;
 
@@ -193,18 +193,15 @@ const DISPLAY_FRAG = `
     vec2 smudgeOffset = -vel * (0.11 * energy + 0.04 * energy * energy);
     vec2 halfVideoRes = vec2(u_videoRes.x, u_videoRes.y * 0.5);
 
-    // === TIMELINE ===
-    // 0.00 -> 0.42 : Multi shatters into 12,288 3D dust particles, leaving the REAL EMPTY TILED ROOM!
-    // 0.36 -> 0.88 : Dust swirls in 3D space & re-assembles into the ZA KAŻDYM RA2EM screening frame
-    //                while the 3D empty room pushes in seamlessly to match NewSong's backdrop 1:1!
+    // === TIMELINE (story chapter S1, tr 0 -> 0.5) ===
+    // 0.00 -> 0.42 : Multi shatters into 3D dust, leaving the REAL EMPTY TILED ROOM
+    // 0.16 -> 0.46 : Dust is sucked into the grout at the centre of the back wall
+    // 0.43 -> 0.50 : Hand-off to the 3D StoryCanvas (identical empty-room frame, the camera
+    //                push-in is done there in real 3D, so the room is NOT zoomed here)
     float tr = clamp(u_transition, 0.0, 1.0);
     float emptyMix = smoothstep(0.005, 0.08, tr);
 
-    float zoomT = clamp((tr - 0.34) / 0.56, 0.0, 1.0);
-    float zoomEase = zoomT * zoomT * (3.0 - 2.0 * zoomT);
-
-    // Gentle 3D camera push-in toward the back wall (1.0 -> 1.48x matches NewSong's 3D room plate!)
-    float roomZoom = mix(1.0, 1.48, zoomEase);
+    float roomZoom = 1.0;
     float fgZoom = 1.0 + smoothstep(0.0, 0.45, tr) * 0.12;
 
     vec2 roomUv = (v_uv - 0.5) / roomZoom + 0.5;
@@ -260,47 +257,7 @@ const DISPLAY_FRAG = `
     float revealMask = smoothstep(0.06, 0.58, energy);
     vec3 roomCol = mix(bgDither, bgSmeared, revealMask);
 
-    // === LAYER 1B: BORDERLESS DOTTED ZA KAŻDYM RA2EM MONOLITH ASSEMBLED BY 3D DOTS ===
-    // Zero darkening of the tiled room! Zero neon borders!
-    // Dots physically assemble the dotted thumbnail first (0.36 -> 0.86); solid Bayer backdrop
-    // fills in cleanly right beneath the locked dots (0.72 -> 0.90), then hands off to NewSong (> 1.0).
-    float cardFormT = smoothstep(0.40, 0.84, tr);
-    float handoffOut = 1.0 - smoothstep(0.99, 1.05, u_transition);
-    if (cardFormT > 0.001 && handoffOut > 0.001) {
-      float easeForm = cardFormT * cardFormT * (3.0 - 2.0 * cardFormT);
-      float frameScale = mix(0.52, 1.0, easeForm);
-      vec2 curHalf = u_targetHalf * frameScale;
-      vec2 cardLocal = (v_uv - u_targetCenter) / max(curHalf, vec2(0.001));
-      vec2 cardUv = cardLocal * 0.5 + 0.5;
-
-      // Soft realistic floating drop-shadow behind the monolith on the bright tiled wall
-      vec2 shadowOffset = vec2(0.0, -0.022 * easeForm);
-      vec2 qs = abs(v_uv - (u_targetCenter + shadowOffset)) - curHalf * 1.01;
-      float shadowDist = length(max(qs, 0.0)) + min(max(qs.x, qs.y), 0.0);
-      float softShadow = exp(-max(shadowDist, 0.0) * 15.0) * smoothstep(0.62, 0.86, tr) * 0.58 * handoffOut;
-      roomCol *= (1.0 - softShadow);
-
-      if (cardUv.x >= 0.0 && cardUv.x <= 1.0 && cardUv.y >= 0.0 && cardUv.y <= 1.0) {
-        // Sample on the exact Bayer cell grid so the dots match ReleaseDitherCanvas 1:1
-        vec2 cardCellUv = clamp((snappedUv - u_targetCenter) / max(curHalf, vec2(0.001)) * 0.5 + 0.5, vec2(0.001), vec2(0.999));
-        vec3 relRaw = texture2D(u_release, cardCellUv).rgb;
-        float relLuma = smoothstep(0.05, 0.90, dot(relRaw, vec3(0.299, 0.587, 0.114)));
-        float th = bayer4x4(cellCoord) - 0.5;
-        float qRel = floor(clamp(relLuma * 3.0 + th * 0.85, 0.0, 3.0)) / 3.0;
-        vec3 relDither = qRel < 0.5
-          ? mix(vec3(0.032, 0.042, 0.050), vec3(0.165, 0.285, 0.325), qRel * 2.0)
-          : mix(vec3(0.165, 0.285, 0.325), vec3(0.80, 0.88, 0.91), (qRel - 0.5) * 2.0);
-
-        // Wait until the swirling 3D dots have formed the dotted thumbnail, then lock in 100% solid before NewSong handoff
-        float condense = smoothstep(0.62, 0.84, tr);
-        float noiseReveal = disintegrationField(cardUv);
-        float pixelSolid = smoothstep(noiseReveal - 0.16, noiseReveal + 0.08, condense * 1.24);
-
-        roomCol = mix(roomCol, relDither, pixelSolid * handoffOut);
-      }
-    }
-
-    // === LAYER 2: GIANT WALL-TO-WALL TYPOGRAPHY SANDWICHED BEHIND MULTI ===
+    // === LAYER 2: GIANT WALL-TO-WALL TYPOGRAPHY (behind Multi on landscape, in front on portrait) ===
     float textVis = u_textReveal * (1.0 - smoothstep(0.03, 0.30, tr));
     vec2 textUv = clamp(roomUv + textParallax + smudgeOffset * 0.9, vec2(0.0), vec2(1.0));
     vec2 dofText = vec2(0.0018, 0.0018 * aspect);
@@ -323,8 +280,9 @@ const DISPLAY_FRAG = `
     vec3 textCol = mix(textDigital, textLiquid, revealMask);
 
     float textShadow = texture2D(u_text, clamp(textUv + vec2(-0.005, 0.008), vec2(0.0), vec2(1.0))).a * textVis * 0.42;
-    vec3 behindMulti = roomCol * (1.0 - textShadow);
-    behindMulti = mix(behindMulti, textCol, textMask * 0.94);
+    float textBehind = 1.0 - u_textFront;
+    vec3 behindMulti = roomCol * (1.0 - textShadow * textBehind);
+    behindMulti = mix(behindMulti, textCol, textMask * 0.94 * textBehind);
 
     // === LAYER 3: CUTOUT YOUNG MULTI -> SHATTERS COMPLETELY & NEVER REAPPEARS ===
     vec2 fgRawUv = coverUv(fgUv + fgParallax + smudgeOffset * 0.72, u_resolution, halfVideoRes);
@@ -381,11 +339,17 @@ const DISPLAY_FRAG = `
 
       vec3 multiCol = mix(fgDither, fgSmeared, revealMask);
       float silhouetteEdge = fgAlpha * (1.0 - fgAlpha) * 4.0;
-      multiCol += vec3(0.28, 0.45, 0.52) * silhouetteEdge * textMask * 0.35;
+      multiCol += vec3(0.28, 0.45, 0.52) * silhouetteEdge * textMask * 0.35 * textBehind;
       finalCol = mix(behindMulti, multiCol, fgAlpha);
     }
 
     finalCol += vec3(0.68, 0.92, 1.0) * burnGlow * 1.15;
+
+    // Portrait: typography composited ON TOP of Multi (soft drop shadow keeps it legible on his dark coat)
+    if (u_textFront > 0.5) {
+      finalCol *= (1.0 - textShadow * 0.9);
+      finalCol = mix(finalCol, textCol, textMask * 0.96);
+    }
 
     float scan = 0.97 + 0.03 * sin(gl_FragCoord.y * 1.4);
     float rim = smoothstep(0.04, 0.20, energy) * (1.0 - smoothstep(0.22, 0.55, energy));
@@ -399,10 +363,10 @@ const DISPLAY_FRAG = `
   }
 `;
 
-// PASS 3: 16,640-Dot 3D Bayer Matrix Morph System!
+// PASS 3: 16,640-Dot 3D dust
 // Phase A (0.00 -> 0.44): Multi shatters into crisp Bayer dots swirling in 3D perspective depth
-// Phase B (0.36 -> 0.88): Every dot snaps onto the exact uniform Bayer-dithered pixel grid
-//                         of the ZA KAŻDYM RA2EM thumbnail, physically assembling the dotted artwork!
+// Phase B (0.16 -> 0.48): The dust is sucked into the grout at the centre of the back wall,
+//                         exactly where the 3D StoryCanvas starts cracking the tiles.
 const PARTICLE_VERT = `
   precision highp float;
 
@@ -410,11 +374,9 @@ const PARTICLE_VERT = `
   attribute float a_index;
 
   uniform sampler2D u_video;
-  uniform sampler2D u_release;
   uniform vec2 u_resolution;
   uniform vec2 u_videoRes;
-  uniform vec2 u_targetHalf;
-  uniform vec2 u_targetCenter;
+  uniform vec2 u_coverScale;
   uniform float u_transition;
   uniform float u_time;
   uniform float u_dpr;
@@ -476,6 +438,9 @@ const PARTICLE_VERT = `
     return (uv - 0.5) * scale + 0.5;
   }
 
+  ${GLSL_TILE_STATE}
+  ${GLSL_CRACKS}
+
   void main() {
     float tr = clamp(u_transition, 0.0, 1.0);
     float disProg = clamp((tr - 0.01) / 0.40, 0.0, 1.0);
@@ -490,7 +455,7 @@ const PARTICLE_VERT = `
     float cutoff = disProg * 1.18;
     float age = max(0.0, (cutoff - field) * 1.65);
 
-    if (matte < 0.24 || age <= 0.001 || u_transition >= 1.02 || disProg <= 0.001) {
+    if (matte < 0.24 || age <= 0.001 || u_transition >= 0.5 || disProg <= 0.001) {
       gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
       gl_PointSize = 0.0;
       v_alpha = 0.0;
@@ -512,59 +477,58 @@ const PARTICLE_VERT = `
       + vec2(cos(angle), sin(angle)) * (0.055 + burst * 0.12);
     float zDepth = sin(clamp(tr * 1.45, 0.0, 1.0) * 3.14159) * (0.45 + r3 * 0.72);
 
-    // Phase 2: R2 low-discrepancy quasirandom mapping so Multi's dots evenly tile the ENTIRE 16:9 thumbnail!
-    vec2 targetLocalUv = vec2(
-      fract(a_index * 0.7548776662 + 0.13),
-      fract(a_index * 0.5698402909 + 0.37)
-    );
+    // Phase 2: the dust is drawn INTO THE GROUT of the first cracked tiles. Same crack
+    // function as the 3D wall (GLSL_CRACKS), so at the hand-off every dot sits exactly on a
+    // grout line that the 3D scene lights up: the dust becomes the glowing tile pattern.
+    vec2 holeCell = vec2(${HOLE_CELL.x.toFixed(3)}, ${HOLE_CELL.y.toFixed(3)});
+    vec2 cell = floor(holeCell);
+    for (int k = 0; k < 7; k++) {
+      vec2 rr = vec2(
+        fract(a_index * 0.7548776662 + 0.13 + float(k) * 0.3183),
+        fract(a_index * 0.5698402909 + 0.37 + float(k) * 0.5371)
+      );
+      vec2 c = floor(holeCell + (rr - 0.5) * 8.0);
+      if (crackDist(c) < 2.3) { cell = c; break; }
+    }
+    float edgeSel = fract(a_index * 0.1234567 + 0.71);
+    float along = fract(a_index * 0.4142135 + 0.29);
+    vec2 local = edgeSel < 0.25 ? vec2(along, 0.0)
+               : edgeSel < 0.5  ? vec2(along, 1.0)
+               : edgeSel < 0.75 ? vec2(0.0, along)
+               :                  vec2(1.0, along);
+    // grout grid of the photo: 28x22 tiles from (210.75, 4.75) px, pitch 19.2 x 19.55 px
+    vec2 photoPx = vec2(210.75, 4.75) + (cell + local) * vec2(19.2, 19.55);
+    vec2 mediaPt = vec2(photoPx.x / 960.0, 1.0 - photoPx.y / 640.0);
+    vec2 destUv = (mediaPt - 0.5) / u_coverScale + 0.5;
 
-    float cardFormT = smoothstep(0.40, 0.84, tr);
-    float frameScale = mix(0.52, 1.0, cardFormT * cardFormT * (3.0 - 2.0 * cardFormT));
-    vec2 rawTargetUv = u_targetCenter + (targetLocalUv * 2.0 - 1.0) * (u_targetHalf * frameScale);
-
-    // Snap landing dots to the EXACT Bayer 4x4 pixel grid of the screen!
-    float cellPx = max(2.2, 2.7 * u_dpr);
-    vec2 targetCell = floor(rawTargetUv * u_resolution / cellPx);
-    vec2 targetPosUv = (targetCell + 0.5) * cellPx / u_resolution;
-
-    // Stagger arrival slightly by radial distance + jitter so the dotted thumbnail builds organically
-    float radialDelay = length(targetLocalUv - 0.5) * 0.12;
-    float convergeRaw = clamp((tr - (0.34 + r3 * 0.13 + radialDelay)) / 0.40, 0.0, 1.0);
+    float convergeRaw = clamp((tr - (0.12 + r3 * 0.1)) / 0.2, 0.0, 1.0);
     float converge = convergeRaw * convergeRaw * (3.0 - 2.0 * convergeRaw);
-
-    // 10% of dots stay as airy ambient room dust floating freely in 3D space
-    float isAmbientMote = step(0.90, r3);
-    vec2 ambientPos = fract(vec2(r1 + u_time * 0.011 * (r2 - 0.5), r2 + u_time * 0.016 * (0.4 + r1 * 0.6)));
-    vec2 destUv = mix(targetPosUv, ambientPos, isAmbientMote);
 
     float persp = 1.0 / max(0.32, 1.0 - zDepth * 0.46 * (1.0 - converge));
     vec2 projectedSwirl = (xySwirl - 0.5) * persp + 0.5;
-    vec2 finalUv = mix(projectedSwirl, destUv, converge);
+    // Spiral in (not a straight line) so it reads as being "drawn" into the wall
+    float spiral = (1.0 - converge) * converge * 2.4 * (r1 - 0.5);
+    vec2 toDest = destUv - projectedSwirl;
+    vec2 swirlPerp = vec2(-toDest.y, toDest.x) * spiral;
+    vec2 finalUv = mix(projectedSwirl, destUv, converge) + swirlPerp;
 
-    // Compute exact Bayer 4x4 dotted color of ZA KAŻDYM RA2EM at this dot's grid cell!
     vec3 multiRgb = texture2D(u_video, vec2(mediaUv.x, 0.504 + mediaUv.y * 0.492)).rgb;
-    vec3 relRaw = texture2D(u_release, clamp(targetLocalUv, vec2(0.001), vec2(0.999))).rgb;
-    float relLuma = smoothstep(0.05, 0.90, dot(relRaw, vec3(0.299, 0.587, 0.114)));
-    float qRel = floor(clamp(relLuma * 3.0 + (bayer4x4(targetCell) - 0.5) * 0.85, 0.0, 3.0)) / 3.0;
-    vec3 relBayerCol = qRel < 0.5
-      ? mix(vec3(0.032, 0.042, 0.050), vec3(0.165, 0.285, 0.325), qRel * 2.0)
-      : mix(vec3(0.165, 0.285, 0.325), vec3(0.80, 0.88, 0.91), (qRel - 0.5) * 2.0);
-
     float birthFlash = exp(-age * 6.5);
     vec3 multiDotCol = multiRgb * 1.15 + vec3(0.10, 0.22, 0.26);
-    vec3 assembledCol = mix(relBayerCol, vec3(0.72, 0.86, 0.90), isAmbientMote * 0.7);
-    v_color = mix(multiDotCol, assembledCol, converge);
+    vec3 groutGlow = vec3(0.86, 0.98, 1.0); // same cold white as the 3D grout glow
+    v_color = mix(multiDotCol, groutGlow, converge);
     v_color = mix(v_color, vec3(0.82, 0.92, 0.95), birthFlash * 0.45);
 
     gl_Position = vec4(finalUv * 2.0 - 1.0, 0.0, 1.0);
-    // Size starts larger in 3D perspective flight, then snaps cleanly to exact Bayer dot size on landing!
+    float cellPx = max(2.2, 2.7 * u_dpr);
     float flightSize = (2.1 + r3 * 2.0) * persp * u_dpr;
-    float landedDotSize = mix(cellPx * 1.18, cellPx * 0.85, isAmbientMote);
-    gl_PointSize = clamp(mix(flightSize, landedDotSize, converge), 1.6, 10.0);
+    gl_PointSize = clamp(mix(flightSize, cellPx * 1.05, converge), 1.4, 10.0);
 
-    // Stay 100% solid through assembly into the dotted thumbnail, then dissolve seamlessly into NewSong
+    // Dots vanish as they settle into the grout; everything is gone before the 3D hand-off
     float fadeIn = smoothstep(0.0, 0.07, age);
-    float fadeOut = mix(1.0 - smoothstep(0.86, 0.96, tr), (1.0 - smoothstep(0.90, 1.01, u_transition)) * 0.42, isAmbientMote);
+    // the dust never fades: it stays lit on the grout until the 3D canvas (which lights the
+    // very same grout lines) has fully cross-faded over it, so the dust BECOMES the glow
+    float fadeOut = 1.0;
     v_alpha = fadeIn * fadeOut * smoothstep(0.24, 0.60, matte);
   }
 `;
@@ -637,9 +601,17 @@ function createTrailTarget(gl, size) {
   return { fbo, tex };
 }
 
+// Portrait / narrow screens put the typography IN FRONT of Multi (he fills the frame there),
+// landscape keeps it sandwiched BEHIND him.
+const TEXT_FRONT_MAX_ASPECT = 1.0;
+// Phones in landscape are still phones: Multi fills the frame there too.
+const PHONE_SHORT_SIDE_PX = 500;
+const isTextFront = (w, h) =>
+  w / Math.max(h, 1) < TEXT_FRONT_MAX_ASPECT || Math.min(w, h) <= PHONE_SHORT_SIDE_PX;
+
 function renderTypographyCanvas(width, height) {
   const canvas = document.createElement('canvas');
-  const aspect = Math.max(width / Math.max(height, 1), 0.45);
+  const aspect = Math.max(width / Math.max(height, 1), 0.42);
   const cw = 2048;
   const ch = Math.max(768, Math.round(cw / aspect));
   canvas.width = cw;
@@ -651,7 +623,9 @@ function renderTypographyCanvas(width, height) {
   ctx.clearRect(0, 0, cw, ch);
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+
+  const YOUNG_FONT = '700 SIZEpx "Antonio", sans-serif';
+  const MULTI_FONT = '400 SIZEpx "Bernoru", "Antonio", sans-serif';
 
   const fitFontSize = (text, fontDecl, targetWidth, maxHeight) => {
     ctx.font = fontDecl.replace('SIZE', '200');
@@ -660,57 +634,76 @@ function renderTypographyCanvas(width, height) {
     return Math.round(Math.min(byWidth, maxHeight));
   };
 
-  const isPortrait = aspect < 0.85;
+  // Real ink bounds (cap height / descent) so lines can be stacked tightly, font-agnostic
+  const inkBox = (text, fontDecl, size) => {
+    ctx.font = fontDecl.replace('SIZE', String(size));
+    const m = ctx.measureText(text);
+    const ascent = m.actualBoundingBoxAscent || size * 0.72;
+    const descent = m.actualBoundingBoxDescent || 0;
+    return { ascent, descent, height: ascent + descent };
+  };
 
-  if (isPortrait) {
-    const youngSize = fitFontSize('YOUNG', '700 SIZEpx "Antonio", sans-serif', cw * 0.94, ch * 0.34);
-    ctx.font = `700 ${youngSize}px "Antonio", sans-serif`;
-    ctx.fillText('YOUNG', cw * 0.5, ch * 0.34);
+  if (aspect < TEXT_FRONT_MAX_ASPECT) {
+    // === STACKED POSTER LOCKUP (phones, tablets in portrait) ===
+    // Both words share the same optical width, stacked tight, sitting over Multi's body
+    // (his face is in the upper third on portrait crops) and clear of the bottom fan banner.
+    const sideMargin = cw * 0.06;
+    const targetW = cw - sideMargin * 2;
+    const youngSize = fitFontSize('YOUNG', YOUNG_FONT, targetW, ch * 0.2);
+    const multiSize = fitFontSize('MULTI', MULTI_FONT, targetW, ch * 0.09);
+    const young = inkBox('YOUNG', YOUNG_FONT, youngSize);
+    const multi = inkBox('MULTI', MULTI_FONT, multiSize);
+    const gap = young.height * 0.07;
+    const blockH = young.height + gap + multi.height;
 
-    const multiSize = fitFontSize('MULTI', '400 SIZEpx "Bernoru", "Antonio", sans-serif', cw * 0.92, ch * 0.18);
-    ctx.font = `400 ${multiSize}px "Bernoru", "Antonio", sans-serif`;
-    ctx.fillText('MULTI', cw * 0.5, ch * 0.62);
+    // Fluid anchor: 0.42 aspect (tall phone) -> block centre at 66%; 1.0 (square) -> 58%
+    const t = Math.min(Math.max((aspect - 0.42) / 0.58, 0), 1);
+    const centerY = ch * (0.66 - 0.08 * t);
+    const top = centerY - blockH / 2;
+
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = YOUNG_FONT.replace('SIZE', String(youngSize));
+    ctx.fillText('YOUNG', cw * 0.5, top + young.ascent);
+    ctx.font = MULTI_FONT.replace('SIZE', String(multiSize));
+    ctx.fillText('MULTI', cw * 0.5, top + young.height + gap + multi.ascent);
   } else {
-    const youngSize = fitFontSize('YOUNG', '700 SIZEpx "Antonio", sans-serif', cw * 0.94, ch * 0.66);
-    ctx.font = `700 ${youngSize}px "Antonio", sans-serif`;
-    ctx.fillText('YOUNG', cw * 0.5, ch * 0.36);
+    // === WALL-TO-WALL LANDSCAPE LOCKUP (behind Multi) ===
+    // Fitted from real ink metrics so MULTI never slides under YOUNG or the bottom
+    // fan banner, from 4:3 laptops to 21:9 monitors and landscape phones.
+    let youngSize = fitFontSize('YOUNG', YOUNG_FONT, cw * 0.94, ch * 0.66);
+    let multiSize = fitFontSize('MULTI', MULTI_FONT, cw * 0.9, ch * 0.28);
+    let young = inkBox('YOUNG', YOUNG_FONT, youngSize);
+    let multi = inkBox('MULTI', MULTI_FONT, multiSize);
+    const gap = () => young.height * 0.06;
+    const maxBlock = ch * 0.8; // top ~7% header, bottom ~13% banner
+    const block = young.height + gap() + multi.height;
+    if (block > maxBlock) {
+      const k = maxBlock / block;
+      youngSize = Math.floor(youngSize * k);
+      multiSize = Math.floor(multiSize * k);
+      young = inkBox('YOUNG', YOUNG_FONT, youngSize);
+      multi = inkBox('MULTI', MULTI_FONT, multiSize);
+    }
+    const blockH = young.height + gap() + multi.height;
+    const top = Math.max(ch * 0.07, ch * 0.47 - blockH / 2);
 
-    const multiSize = fitFontSize('MULTI', '400 SIZEpx "Bernoru", "Antonio", sans-serif', cw * 0.90, ch * 0.28);
-    ctx.font = `400 ${multiSize}px "Bernoru", "Antonio", sans-serif`;
-    ctx.fillText('MULTI', cw * 0.5, ch * 0.72);
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = YOUNG_FONT.replace('SIZE', String(youngSize));
+    ctx.fillText('YOUNG', cw * 0.5, top + young.ascent);
+    ctx.font = MULTI_FONT.replace('SIZE', String(multiSize));
+    ctx.fillText('MULTI', cw * 0.5, top + young.height + gap() + multi.ascent);
   }
 
   return canvas;
 }
 
-// Computes the EXACT pixel-locked screen-space rectangle of NewSong's floating monolith (.poster-monolith-slot)
-// Desktop uses an organic asymmetric editorial placement (left: 36%, top: 49%); tablet/mobile centers cleanly.
-function computeTargetFrameRect(vw, vh) {
-  let framePxW;
-  let centerX;
-  let topRatio;
-
-  if (vw <= 768) {
-    framePxW = vw * 0.88;
-    centerX = 0.5;
-    topRatio = 0.39;
-  } else if (vw <= 1024) {
-    framePxW = Math.min(vw * 0.72, 620);
-    centerX = 0.5;
-    topRatio = 0.42;
-  } else {
-    framePxW = Math.min(vw * 0.50, 760);
-    centerX = 0.36;
-    topRatio = 0.49;
-  }
-
-  const framePxH = framePxW * (9 / 16);
-  const halfW = (framePxW / Math.max(vw, 1)) * 0.5;
-  const halfH = (framePxH / Math.max(vh, 1)) * 0.5;
-  // WebGL UV Y=0 is bottom, Y=1 is top -> convert CSS topRatio to WebGL UV
-  const centerY = 1.0 - topRatio;
-
-  return { halfW, halfH, centerX, centerY };
+// The photo (960x640) is shown with a CSS-like "cover" crop; the dust needs the same
+// crop to land on the photo's grout lines.
+function computeCoverScale(vw, vh) {
+  const mediaAspect = 960 / 640;
+  const canvasAspect = vw / Math.max(vh, 1);
+  if (canvasAspect > mediaAspect) return { x: 1, y: mediaAspect / canvasAspect };
+  return { x: canvasAspect / mediaAspect, y: 1 };
 }
 
 function HeroVideoShader({ startAnimation = false, transitionProgress }) {
@@ -807,7 +800,6 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
 
     const mediaTex = createSimpleTex([12, 16, 19, 255]);
     const textTex = createSimpleTex([0, 0, 0, 0]);
-    const releaseTex = createSimpleTex([10, 16, 20, 255]);
     const emptyRoomTex = createSimpleTex([14, 28, 34, 255]);
 
     let mediaW = 960;
@@ -849,7 +841,6 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
         mediaH = img.naturalHeight || 1280;
       }
     });
-    loadTexImage('/release-cover.jpg', releaseTex);
     loadTexImage('/hero-empty-room.jpg', emptyRoomTex);
 
     video.muted = true;
@@ -872,13 +863,11 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
     const dVideo = gl.getUniformLocation(displayProg, 'u_video');
     const dTrail = gl.getUniformLocation(displayProg, 'u_trail');
     const dText = gl.getUniformLocation(displayProg, 'u_text');
-    const dRelease = gl.getUniformLocation(displayProg, 'u_release');
     const dEmptyRoom = gl.getUniformLocation(displayProg, 'u_emptyRoom');
     const dRes = gl.getUniformLocation(displayProg, 'u_resolution');
     const dVideoRes = gl.getUniformLocation(displayProg, 'u_videoRes');
     const dParallax = gl.getUniformLocation(displayProg, 'u_parallax');
-    const dTargetHalf = gl.getUniformLocation(displayProg, 'u_targetHalf');
-    const dTargetCenter = gl.getUniformLocation(displayProg, 'u_targetCenter');
+    const dTextFront = gl.getUniformLocation(displayProg, 'u_textFront');
     const dTime = gl.getUniformLocation(displayProg, 'u_time');
     const dDpr = gl.getUniformLocation(displayProg, 'u_dpr');
     const dTextReveal = gl.getUniformLocation(displayProg, 'u_textReveal');
@@ -888,11 +877,9 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
     const pGridLoc = particleProg ? gl.getAttribLocation(particleProg, 'a_gridUv') : -1;
     const pIdxLoc = particleProg ? gl.getAttribLocation(particleProg, 'a_index') : -1;
     const pVideo = particleProg ? gl.getUniformLocation(particleProg, 'u_video') : null;
-    const pRelease = particleProg ? gl.getUniformLocation(particleProg, 'u_release') : null;
     const pRes = particleProg ? gl.getUniformLocation(particleProg, 'u_resolution') : null;
     const pVideoRes = particleProg ? gl.getUniformLocation(particleProg, 'u_videoRes') : null;
-    const pTargetHalf = particleProg ? gl.getUniformLocation(particleProg, 'u_targetHalf') : null;
-    const pTargetCenter = particleProg ? gl.getUniformLocation(particleProg, 'u_targetCenter') : null;
+    const pCoverScale = particleProg ? gl.getUniformLocation(particleProg, 'u_coverScale') : null;
     const pTransition = particleProg ? gl.getUniformLocation(particleProg, 'u_transition') : null;
     const pTime = particleProg ? gl.getUniformLocation(particleProg, 'u_time') : null;
     const pDpr = particleProg ? gl.getUniformLocation(particleProg, 'u_dpr') : null;
@@ -936,13 +923,15 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
     window.addEventListener('touchmove', onTouchMove, { passive: true });
 
     let dpr = Math.min(window.devicePixelRatio || 1, 1.75);
-    let targetRect = computeTargetFrameRect(window.innerWidth, window.innerHeight);
+    let coverScale = computeCoverScale(window.innerWidth, window.innerHeight);
+    let textFront = isTextFront(window.innerWidth, window.innerHeight) ? 1 : 0;
 
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 1.75);
       const cw = canvas.clientWidth || window.innerWidth;
       const ch = canvas.clientHeight || window.innerHeight;
-      targetRect = computeTargetFrameRect(cw, ch);
+      coverScale = computeCoverScale(cw, ch);
+      textFront = isTextFront(cw, ch) ? 1 : 0;
       const w = Math.max(1, Math.floor(cw * dpr));
       const h = Math.max(1, Math.floor(ch * dpr));
       if (canvas.width !== w || canvas.height !== h) {
@@ -964,8 +953,8 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
     const render = (now) => {
       rafId = requestAnimationFrame(render);
 
-      // Keep Hero's bright live Bayer-dithered tiled room running cleanly behind NewSong until Discography covers viewport
-      const heroVisible = window.scrollY < window.innerHeight * 3.65;
+      // Once the 3D StoryCanvas has fully taken over (tr >= 0.5) the hero is covered: stop rendering.
+      const heroVisible = transitionRef.current < 0.5;
       if (!heroVisible) {
         if (!video.paused) video.pause();
         return;
@@ -1050,10 +1039,6 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
       gl.bindTexture(gl.TEXTURE_2D, textTex);
       gl.uniform1i(dText, 2);
 
-      gl.activeTexture(gl.TEXTURE3);
-      gl.bindTexture(gl.TEXTURE_2D, releaseTex);
-      gl.uniform1i(dRelease, 3);
-
       gl.activeTexture(gl.TEXTURE4);
       gl.bindTexture(gl.TEXTURE_2D, emptyRoomTex);
       gl.uniform1i(dEmptyRoom, 4);
@@ -1061,8 +1046,7 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
       gl.uniform2f(dRes, canvas.width, canvas.height);
       gl.uniform2f(dVideoRes, mediaW, mediaH);
       gl.uniform2f(dParallax, pointer.parallaxX, pointer.parallaxY);
-      gl.uniform2f(dTargetHalf, targetRect.halfW, targetRect.halfH);
-      gl.uniform2f(dTargetCenter, targetRect.centerX, targetRect.centerY);
+      gl.uniform1f(dTextFront, textFront);
       gl.uniform1f(dTime, elapsed);
       gl.uniform1f(dDpr, dpr);
       gl.uniform1f(dTextReveal, textReveal);
@@ -1070,7 +1054,7 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
       // --- PASS 3: 16,640 3D Dots Shattering Multi -> Physically Assembling Dotted ZA KAŻDYM RA2EM Thumbnail ---
-      if (particleProg && particleBuffer && tr > 0.01 && tr < 1.02) {
+      if (particleProg && particleBuffer && tr > 0.01 && tr < 0.5) {
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.useProgram(particleProg);
@@ -1086,14 +1070,9 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
         gl.bindTexture(gl.TEXTURE_2D, mediaTex);
         gl.uniform1i(pVideo, 0);
 
-        gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, releaseTex);
-        gl.uniform1i(pRelease, 1);
-
         gl.uniform2f(pRes, canvas.width, canvas.height);
         gl.uniform2f(pVideoRes, mediaW, mediaH);
-        gl.uniform2f(pTargetHalf, targetRect.halfW, targetRect.halfH);
-        gl.uniform2f(pTargetCenter, targetRect.centerX, targetRect.centerY);
+        gl.uniform2f(pCoverScale, coverScale.x, coverScale.y);
         gl.uniform1f(pTransition, tr);
         gl.uniform1f(pTime, elapsed);
         gl.uniform1f(pDpr, dpr);
@@ -1114,7 +1093,6 @@ function HeroVideoShader({ startAnimation = false, transitionProgress }) {
       window.removeEventListener('resize', onResize);
       gl.deleteTexture(mediaTex);
       gl.deleteTexture(textTex);
-      gl.deleteTexture(releaseTex);
       gl.deleteTexture(emptyRoomTex);
       gl.deleteTexture(readTarget.tex);
       gl.deleteTexture(writeTarget.tex);

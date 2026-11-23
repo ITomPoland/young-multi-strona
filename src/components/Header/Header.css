@@ -78,59 +78,31 @@
   transform: translate(3px, -3px);
 }
 
-/* --- RESPONSIVE DESIGN --- */
-
-@media (max-width: 1024px) {
-  .header-container {
-    padding: 2rem 2rem;
-  }
-
-  .header-logo {
-    height: 60px;
-  }
-
-  .header-actions {
-    gap: 1.6rem;
-  }
-
-  .header-shop-link {
-    font-size: 1rem;
-  }
+/* --- RESPONSIVE DESIGN: fluid, no jumps between breakpoints ---
+   320px phone -> 4K TV. Logo ≈ 80px on a 1440 laptop (as before). */
+.header-container {
+  padding: clamp(1rem, 2.6vw, 4.5rem) clamp(1rem, 3.2vw, 5.5rem);
 }
 
-@media (max-width: 768px) {
-  .header-container {
-    padding: 1.5rem 1.5rem;
-  }
-
-  .header-logo {
-    height: 50px;
-  }
-
-  .header-actions {
-    gap: 1.2rem;
-  }
-
-  .header-shop-link {
-    font-size: 0.95rem;
-    letter-spacing: 0.12em;
-  }
+.header-logo {
+  height: clamp(42px, calc(30px + 3.5vw), 150px);
 }
 
-@media (max-width: 480px) {
+.header-actions {
+  gap: clamp(0.9rem, 0.4rem + 1.4vw, 3.2rem);
+}
+
+.header-shop-link {
+  font-size: clamp(0.85rem, 0.68rem + 0.42vw, 1.7rem);
+  letter-spacing: clamp(0.12em, 0.1em + 0.3vw, 0.16em);
+}
+
+/* short landscape screens (phones sideways): keep the header slim */
+@media (max-height: 500px) and (min-aspect-ratio: 1/1) {
   .header-container {
-    padding: 1rem 1rem;
+    padding: 0.7rem clamp(1rem, 3vw, 2rem);
   }
-
   .header-logo {
-    height: 45px;
-  }
-
-  .header-actions {
-    gap: 0.9rem;
-  }
-
-  .header-shop-link {
-    font-size: 0.85rem;
+    height: 38px;
   }
 }

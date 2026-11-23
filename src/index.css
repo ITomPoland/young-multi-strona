@@ -83,6 +83,11 @@
 /* Smooth scroll for the entire page */
 html {
   /* scroll-behavior: smooth; - DISABLED for instant menu teleport */
+
+  /* Fluid base size: 16px up to ~1440px wide, then grows gently for big
+     monitors and TVs (18px @1920, ~21px @2560, 24px @4K). Everything sized
+     in rem scales with it, so the layout keeps its proportions on a TV. */
+  font-size: clamp(16px, calc(10px + 0.42vw), 24px);
 }
 
 body {
