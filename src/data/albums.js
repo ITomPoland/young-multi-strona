@@ -1,5 +1,5 @@
-// Discography shown on the album ring (story chapter S5). Tracklists are kept for the
-// album "scene" opened on click (next step).
+// Discography shown on the album ring (story chapter S5). Clicking an album opens its scene:
+// the cover becomes the backdrop and the tracklist runs in a barrel (AlbumScene).
 import nowaFala from '../assets/NowafalaCover.avif?w=1024&format=avif';
 import trapstar from '../assets/trapstarCover.avif?w=1024&format=avif';
 import tad from '../assets/tadCover.avif?w=1024&format=avif';
@@ -37,5 +37,15 @@ export const ALBUMS = [
     cover: toxic,
     note: 'Powrót w stylu rage. Platyna.',
     tracklist: ['Toxic Luv (feat. White 2115)', 'Bez serca', 'Beksa', 'Oscar (feat. White Widow)', 'Sól']
+  },
+  {
+    // announced, not out yet: shown as a damaged tape. null = a track not revealed yet
+    id: 'lost-media',
+    title: 'LOST MEDIA',
+    year: '11.12.2026',
+    cover: '/release-cover.jpg',
+    upcoming: true,
+    note: 'Zapowiedź. Singiel „Za każdym ra2em” już jest.',
+    tracklist: ['Za każdym ra2em (feat. Jula)', null, null, null, null]
   }
 ];

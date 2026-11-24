@@ -158,7 +158,7 @@ const StorySection = React.forwardRef(function StorySection({ storyVh, startAnim
           </motion.div>
 
           {/* === S5: album ring === */}
-          {webgl && <AlbumsOverlay storyVh={storyVh} />}
+          {webgl && <AlbumsOverlay storyVh={storyVh} state={stateRef} />}
         </div>
       </section>
 

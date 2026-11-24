@@ -16,7 +16,7 @@ export const STORY_CHAPTERS = [
   { id: 'explode', vh: 75 }, // S2: charge peaks, burst, the camera catches the tile
   { id: 'single', vh: 145, anchor: 'nowa-piosenka', anchorAt: 0.15 }, // S3: bullet time + the single
   { id: 'turn', vh: 140 }, // S4: speed ramp, through the hole, 180° -> the room seen from behind
-  { id: 'albums', vh: 360, anchor: 'dyskografia', anchorAt: 0.2 } // S5: the album ring -> black
+  { id: 'albums', vh: 440, anchor: 'dyskografia', anchorAt: 0.2 } // S5: 4 albums + LOST MEDIA -> black
 ];
 
 // Key moments (absolute story-vh)
@@ -121,7 +121,7 @@ export function burstClock(storyVh) {
 // albumFocus: -1 = the hole, i = album i on the spiral, continuing a bit past the last.
 // Between albums the speed eases down to ~55% (a linger) but never to zero.
 // ---------------------------------------------------------------------
-export const ALBUM_COUNT = 4;
+export const ALBUM_COUNT = 5; // the four albums + LOST MEDIA (announced, corrupted)
 export const ORBIT_START_VH = CHAPTER_RANGES.turn[0] + (CHAPTER_RANGES.turn[1] - CHAPTER_RANGES.turn[0]) * 0.6;
 export const FIRST_ALBUM_VH = CHAPTER_RANGES.albums[0] + 30;
 export const ALBUM_STEP_VH = 80;
@@ -133,13 +133,54 @@ const linger = (t) => {
   return s * 0.55 + s * s * s * (s * (s * 6 - 15) + 10) * 0.45;
 };
 
+// ---------------------------------------------------------------------
+// THE WHIP -> TOWER HANDOFF: the camera must never brake at the hole.
+// The whip (first 60% of the turn) ends still moving: m'(1) = WHIP_END_SLOPE.
+// Its spin is carried on by the camera itself (spinCarry: it overshoots the tower a few
+// degrees and swings back) and its forward speed by the pull-out (TOWER_PULL), while the
+// orbit round the tower picks up from rest. Speed is continuous across the handoff.
+// ---------------------------------------------------------------------
+export const WHIP_END_SLOPE = 1.0;
+export const WHIP_VH = (CHAPTER_RANGES.turn[1] - CHAPTER_RANGES.turn[0]) * 0.6;
+// cubic with m(0)=0, m'(0)=0, m(1)=1, m'(1)=WHIP_END_SLOPE (peaks ~1.33 at u=2/3, no stop)
+export function whipEase(u) {
+  const t = clamp01(u);
+  const k = WHIP_END_SLOPE;
+  return (3 - k) * t * t + (k - 2) * t * t * t;
+}
+// The whip turns ~(180° - the tile's own yaw) in WHIP_VH; this is its spin as it lets go
+const SPIN_RATE = ((Math.PI - 0.32) * WHIP_END_SLOPE) / WHIP_VH; // rad per vh
+// Extra yaw after the handoff. The camera's TOTAL heading follows one Hermite that starts
+// at the whip's spin rate and slows monotonically onto album 0 (arriving with the linger's
+// speed); the orbit position (albumFocus) starts from rest, and the difference is this
+// overshoot: the gaze runs ahead towards album 0, then the orbit catches up. 0 from album 0 on.
+export function spinCarry(storyVh) {
+  if (storyVh <= ORBIT_START_VH || storyVh >= FIRST_ALBUM_VH) return 0;
+  const T = FIRST_ALBUM_VH - ORBIT_START_VH;
+  const t = (storyVh - ORBIT_START_VH) / T;
+  const m0 = (SPIN_RATE * T) / ALBUM_SPACING; // the spin in focus units per t
+  return m0 * (t * t * t - 2 * t * t + t) * ALBUM_SPACING; // h10 term: heading - orbit
+}
+// Pull-out from the wound: r(x) = out * (1 - (1 + c x) e^(-x / tau)), with c chosen so it
+// starts at the whip's speed (v0, metres per vh) and settles without overshoot
+export const TOWER_PULL = { out: 4.6, tau: 22, v0: 0.055 };
+export function towerPull(storyVh) {
+  const x = Math.max(storyVh - ORBIT_START_VH, 0);
+  const { out, tau, v0 } = TOWER_PULL;
+  const c = 1 / tau - v0 / out;
+  return out * (1 - (1 + c * x) * Math.exp(-x / tau));
+}
+
 export function albumFocus(storyVh) {
   if (storyVh <= ORBIT_START_VH) return -1;
   if (storyVh < FIRST_ALBUM_VH) {
-    // leaves the hole already moving (half linear), eases onto the first album
-    const t = (storyVh - ORBIT_START_VH) / (FIRST_ALBUM_VH - ORBIT_START_VH);
-    const s = clamp01(t);
-    return -1 + (s * 0.5 + (1 - Math.pow(1 - s, 2)) * 0.5);
+    // Hermite: leaves the hole from rest (the spin is carried by spinCarry), arrives on
+    // album 0 at exactly the speed the linger starts with -> no kink anywhere
+    const t = clamp01((storyVh - ORBIT_START_VH) / (FIRST_ALBUM_VH - ORBIT_START_VH));
+    const m1 = (0.55 * (FIRST_ALBUM_VH - ORBIT_START_VH)) / ALBUM_STEP_VH;
+    const h00 = 2 * t * t * t - 3 * t * t + 1;
+    const h11 = t * t * t - t * t;
+    return -h00 + m1 * h11;
   }
   const u = (storyVh - FIRST_ALBUM_VH) / ALBUM_STEP_VH;
   const i = Math.floor(u);

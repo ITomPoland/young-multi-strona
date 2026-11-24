@@ -221,9 +221,9 @@ html.lenis body {
   overscroll-behavior: contain;
 }
 
-.lenis.lenis-stopped {
-  overflow: hidden;
-}
+/* No overflow: hidden while stopped: on <html> it breaks position: sticky (the whole story
+   canvas would scroll away). Whatever stops Lenis takes the wheel / touch itself
+   (lib/scrollLock.js, the album scene). */
 
 .lenis.lenis-scrolling iframe {
   pointer-events: none;

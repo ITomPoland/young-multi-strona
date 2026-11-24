@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock, albumFocus, ALBUM_SPACING, ALBUM_RISE, ORBIT_START_VH } from './story.config';
+import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock, albumFocus, ALBUM_SPACING, ALBUM_RISE, ORBIT_START_VH, whipEase, spinCarry, towerPull } from './story.config';
 import { PHOTO, TOWER } from './world/calibration';
 import { REST_SIZE, heroTileAt } from './storyThree';
 
@@ -78,6 +78,10 @@ export default function StoryDirector({ storyVh, state }) {
   useFrame((frame, dt) => {
     const s = state.current;
     const vh = storyVh.get();
+    // scroll velocity (vh / s), smoothed: drives the secondary motion out at the tower
+    const dts = Math.min(Math.max(dt, 1 / 240), 0.1);
+    const rawVel = s.vh === undefined ? 0 : THREE.MathUtils.clamp((vh - s.vh) / dts, -600, 600);
+    s.vel = (s.vel ?? 0) + (rawVel - (s.vel ?? 0)) * (1 - Math.exp(-dts * 7));
     s.vh = vh;
     const time = frame.clock.elapsedTime;
     const aspect = size.width / Math.max(size.height, 1);
@@ -111,17 +115,25 @@ export default function StoryDirector({ storyVh, state }) {
     // --- CAMERA ---------------------------------------------------------------
     const DEG = Math.PI / 180;
     // lens first (independent of the pose): hero crop -> centred, wider on the punch / whip
-    const m = easeInOutCubic(clamp01(d / 0.6)); // the whip through the hole
+    // the whip through the hole: eases in, and LEAVES still moving (no brake at the handoff)
+    const m = whipEase(d / 0.6);
+    const arc = Math.pow(Math.sin(m * Math.PI), 2); // 0 at both ends with zero slope
+    // angular speed round the tower (rad / s) from the scroll speed: bank, lens, billboards
+    const dPhi = (albumFocus(vh + 0.5) - albumFocus(vh - 0.5)) * ALBUM_SPACING;
+    const omega = s.vel * dPhi;
+    s.towerVel = THREE.MathUtils.clamp(omega * 0.35, -1, 1) * ringIn;
     const startOff = PHOTO.cy - PHOTO.height / 2;
     const lensOff = THREE.MathUtils.lerp(startOff, 0, smooth(B - 15, B + 35, vh));
     const punchPeak = smooth(B, B + 8, vh) * (1 - smooth(B + 14, B + 50, vh));
-    const zoom = (1 - punchPeak * 0.12 - Math.sin(m * Math.PI) * 0.16) * (1 + ringIn * 0.12);
+    const speedWide = Math.min(Math.abs(omega) * 0.045, 0.1) * ringIn; // faster = wider lens
+    const zoom = (1 - punchPeak * 0.12 - arc * 0.18) * (1 + ringIn * 0.12) * (1 - speedWide);
     const frustum = applyLens(camera, aspect, lensOff, zoom);
+    s.frustum = frustum; // per unit depth: the opened album covers exactly this view
 
     // (A) base path: creeps in while the charge builds, punches in on the burst
     const creep = smooth(BEATS.charge[0], B, vh) * 0.35;
     const punch = easeOutCubic(clamp01((vh - B) / 60)) * 1.45;
-    const shakeAmt = smooth(B - 30, B, vh) * (1 - smooth(B + 3, B + 40, vh)) * 0.016 + Math.sin(m * Math.PI) * 0.006;
+    const shakeAmt = smooth(B - 30, B, vh) * (1 - smooth(B + 3, B + 40, vh)) * 0.016 + arc * 0.006;
     const shakeX = Math.sin(time * 41.0) * Math.sin(time * 13.7) * shakeAmt;
     const shakeY = Math.sin(time * 37.0 + 1.3) * Math.cos(time * 11.3) * shakeAmt;
     const yawScale = THREE.MathUtils.lerp(0.55, 1, clamp01((aspect - 0.5) / 1.0));
@@ -180,7 +192,6 @@ export default function StoryDirector({ storyVh, state }) {
     camera.quaternion.copy(_baseQuat).slerp(_lockQuat, meet);
     if (d > 0) {
       // arc a little sideways while passing the rim, roll into the turn
-      const arc = Math.sin(m * Math.PI);
       camera.position.lerp(_endPos, m);
       camera.position.x += arc * 0.22;
       camera.quaternion.slerp(_endQuat, m);
@@ -188,21 +199,43 @@ export default function StoryDirector({ storyVh, state }) {
     }
     camera.position.x += shakeX * (1 - meet);
 
-    // (D) THE TOWER: out of the wound without stopping -> away from it, up, and round the
-    // tower past the album billboards (same turning direction as the 180° turn)
+    // (D) THE TOWER: out of the wound without stopping. The whip's momentum is handed on:
+    // its spin overshoots the tower and swings back (spinCarry), its forward speed becomes
+    // the pull-out (exponential, starts at the whip's speed), and the orbit picks up from
+    // rest. Out here the camera is a drone, not a rail: it breathes out between albums and
+    // in on each one, banks into the turn and widens the lens with the scroll speed, looks
+    // a touch ahead of where it is going, and never quite holds still.
     if (vh > ORBIT_START_VH) {
       const f = s.albumFocus;
       const phi = (f + 1) * ALBUM_SPACING;
       const startR = TOWER.z + 7.1; // where the turn left us (z = -7.1), measured from the axis
-      const r = startR + 2.9 * (1 - Math.pow(1 - ringIn, 2)) + Math.sin(time * 0.21) * 0.04 * ringIn;
-      const y = (f + 1) * ALBUM_RISE + 0.55 * ringIn + Math.sin(time * 0.37) * 0.03 * ringIn;
+      const between = f > 0 ? Math.pow(Math.sin(f * Math.PI), 2) : 0; // 0 on each album
+      // portrait: the lens is narrow, so stand further off and keep the album in the upper
+      // half of the frame, clear of its title at the bottom
+      const narrow = clamp01((1 - aspect) / 0.55) * ringIn;
+      const r =
+        startR +
+        narrow * 2.8 +
+        towerPull(vh) +
+        between * 1.5 +
+        Math.sin(time * 0.21) * 0.06 * ringIn;
+      const albumH = (f + 1) * ALBUM_RISE;
+      // rises with the orbit (eased in from the hole's height), floats over each album
+      const y = albumH * ringIn + 0.55 * ringIn + between * 0.5 + Math.sin(time * 0.37) * 0.05 * ringIn;
       camera.position.set(TOWER.x - Math.sin(phi) * r, y, TOWER.z - Math.cos(phi) * r);
-      // look at the tower, a touch below the camera (we come from above onto each billboard)
-      const lookY = (f + 1) * ALBUM_RISE + 0.12 * ringIn;
+      const lookY = albumH + 0.12 * ringIn - narrow * 1.1;
       const pitch = Math.atan2(lookY - y, r);
       // on wide screens the billboard sits right of centre, leaving room for its title
       const sideOffset = 0.17 * clamp01((aspect - 0.9) / 0.6) * ringIn;
-      _e.set(pitch + p.sy * 0.03 * ringIn, Math.PI + phi + sideOffset - p.sx * 0.045 * ringIn, 0, 'YXZ');
+      const lead = THREE.MathUtils.clamp(omega * 0.025, -0.06, 0.06) * ringIn;
+      const bank = THREE.MathUtils.clamp(-omega * 0.05, -0.12, 0.12) * ringIn;
+      const drift = ringIn * (1 - Math.min(Math.abs(omega) * 0.5, 1));
+      _e.set(
+        pitch + p.sy * 0.03 * ringIn + Math.sin(time * 0.29 + 0.7) * 0.008 * drift,
+        Math.PI + phi + spinCarry(vh) + sideOffset + lead - p.sx * 0.045 * ringIn + Math.sin(time * 0.19) * 0.01 * drift,
+        bank + Math.sin(time * 0.23 + 2.0) * 0.006 * drift,
+        'YXZ'
+      );
       camera.quaternion.setFromEuler(_e);
     }
     camera.updateMatrixWorld();

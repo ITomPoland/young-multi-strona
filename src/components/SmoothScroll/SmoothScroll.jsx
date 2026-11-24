@@ -2,6 +2,7 @@ import { useLayoutEffect } from 'react';
 import Lenis from 'lenis';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { registerLenis } from '../../lib/scrollLock';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -18,6 +19,7 @@ const SmoothScroll = () => {
             touchMultiplier: 2,
         });
 
+        registerLenis(lenis);
         lenis.on('scroll', ScrollTrigger.update);
 
         const tickerCallback = (time) => {
@@ -29,6 +31,7 @@ const SmoothScroll = () => {
 
         return () => {
             gsap.ticker.remove(tickerCallback);
+            registerLenis(null);
             lenis.destroy();
         };
     }, []);

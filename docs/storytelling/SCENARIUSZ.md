@@ -196,6 +196,16 @@ Rozbite na 3 takty, bo wybuch bez zapowiedzi nie robi wrażenia:
 - **Dźwięk:** przy każdym albumie krótki "tick"/szum winyla. Opcjonalnie kilkusekundowe fragmenty utworów (do decyzji, kwestia praw/plików).
 - **Mobile:** pierścień zamieniony na poziomy pas (albumy przewijają się w bok), mniejsza krzywizna, brak RGB shift.
 
+> **Stan na 24.11.2026: zrobione, ale DO DOPRACOWANIA (wracamy do tego).**
+> Zamiast pierścienia jest wieża: pokój siedzi w niewidocznym walcu, wylatujemy z rany w jego skórze, okładki pływają spiralą dookoła (`src/story/world/Tower.jsx`).
+> - Kamera nie hamuje przy wylocie z dziury (pęd przechodzi w orbitę), reaguje na prędkość scrolla (przechył, szerszy obiektyw, "oddech" między albumami).
+> - Okładki: poza fokusem dither w kolorze albumu, w fokusie czysty obraz przebija się po pęknięciach (świecące fugi), glitch przy złapaniu fokusu, wygięcie/RGB od prędkości. LOST MEDIA = uszkodzona taśma, pęka tylko do połowy.
+> - Kolor albumu (z okładki) barwi pustkę, poświatę, wstęgi i scenę albumu.
+> - Klik w album: okładka leci na cały ekran jak kartka papieru (sprężyna, prowadzi punkt kliknięcia) i staje się tłem; tracklista w "beczce" (`AlbumScene.jsx`), scroll strony zablokowany (`lib/scrollLock.js`).
+> - Dwie wstęgi-tickery splątane wokół albumów, nieregularnie, za/przed okładkami (nigdy przez środek).
+>
+> **Do dopracowania:** napisy i ich układ (tytuł/rok/opis przy albumie i w scenie albumu), strojenie wstęg (ile chaosu), pełne tracklisty i linki do streamingów w `src/data/albums.js`, test na telefonach, ewentualnie datamosh między albumami i dźwięk (patrz pomysły z Codrops/Awwwards).
+
 ---
 
 ### S6 — Odbicie w okularach → głowa → O mnie *(900 → 1120vh, w tym HOLD ~100vh)*

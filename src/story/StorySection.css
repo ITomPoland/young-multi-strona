@@ -540,3 +540,280 @@
   color: rgba(228, 238, 242, 0.7);
   letter-spacing: 0.04em;
 }
+
+.story-albums-head {
+  transition: opacity 0.4s ease;
+}
+
+.story-albums-head.is-hidden {
+  opacity: 0;
+}
+
+/* the whole frame opens the album in focus */
+.story-albums-hit {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.story-albums-name {
+  pointer-events: auto;
+}
+
+.story-albums-open {
+  margin-top: 1.3em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.6em 1em;
+  border: 1px solid rgba(194, 214, 224, 0.35);
+  background: rgba(5, 10, 12, 0.55);
+  color: #f1f5f7;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(0.75rem, 0.6rem + 0.45vw, 1.15rem);
+  letter-spacing: 0.2em;
+  cursor: pointer;
+  transition: gap 0.3s ease, background 0.3s ease, border-color 0.3s ease;
+}
+
+.story-albums-open-line {
+  display: inline-block;
+  width: 1.6em;
+  height: 1px;
+  background: currentColor;
+  transition: width 0.3s ease;
+}
+
+.story-albums-open:hover,
+.story-albums-open:focus-visible {
+  gap: 1em;
+  background: rgba(40, 70, 80, 0.75);
+  border-color: rgba(194, 214, 224, 0.7);
+}
+
+.story-albums-open:hover .story-albums-open-line,
+.story-albums-open:focus-visible .story-albums-open-line {
+  width: 3em;
+}
+
+/* ---------- the album scene: backdrop is the 3D cover (dithered), barrel tracklist ---------- */
+.album-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: auto;
+  color: #f1f5f7;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: contain;
+  background: radial-gradient(ellipse at 70% 50%, rgba(3, 6, 8, 0.15), rgba(3, 6, 8, 0.6) 75%);
+}
+
+.album-scene-top {
+  position: absolute;
+  top: calc(var(--top) + 1.5rem);
+  left: var(--pad-x);
+  right: var(--pad-x);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'Antonio', sans-serif;
+  font-size: clamp(0.75rem, 1vw, 1rem);
+  letter-spacing: 0.32em;
+  color: rgba(228, 238, 242, 0.7);
+}
+
+.album-scene-close {
+  display: inline-flex;
+  gap: 0.8em;
+  align-items: center;
+  padding: 0.55em 0.9em;
+  border: 1px solid rgba(194, 214, 224, 0.35);
+  background: rgba(5, 10, 12, 0.6);
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.album-scene-close:hover,
+.album-scene-close:focus-visible {
+  background: #c2d6e0;
+  color: #080a0c;
+}
+
+.album-scene-info {
+  position: absolute;
+  left: var(--pad-x);
+  bottom: var(--bottom);
+  max-width: min(30rem, 38vw);
+}
+
+.album-scene-kicker,
+.album-scene-meta {
+  display: block;
+  font-family: 'Antonio', sans-serif;
+  font-size: clamp(0.75rem, 1vw, 1rem);
+  letter-spacing: 0.3em;
+  color: rgba(228, 238, 242, 0.65);
+}
+
+.album-scene-title {
+  margin: 0.25em 0 0;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.6rem, min(6.5vw, 11svh), 8.5rem);
+  line-height: 0.9;
+  white-space: pre;
+}
+
+.album-scene-note {
+  margin: 0.9em 0 1.2em;
+  font-size: clamp(0.85rem, 1vw, 1rem);
+  letter-spacing: 0.04em;
+  color: rgba(228, 238, 242, 0.75);
+}
+
+/* the barrel: items sit on the centre line, JS bends them round a horizontal cylinder */
+.album-scene-barrel {
+  position: absolute;
+  top: 50%;
+  left: 46%;
+  right: var(--pad-x);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  perspective: 1100px;
+  transform-style: preserve-3d;
+}
+
+.album-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  translate: 0 -50%;
+  opacity: 0;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.album-track-inner {
+  display: flex;
+  align-items: baseline;
+  gap: 1.1em;
+  color: rgba(228, 238, 242, 0.42);
+  text-decoration: none;
+  transition: color 0.35s ease;
+}
+
+.album-track.is-active .album-track-inner {
+  color: #f1f5f7;
+}
+
+.album-track-no {
+  font-family: 'Antonio', sans-serif;
+  font-size: clamp(0.8rem, 1.1vw, 1.1rem);
+  letter-spacing: 0.2em;
+  min-width: 2.2em;
+  color: rgba(194, 214, 224, 0.7);
+}
+
+.album-track-name {
+  display: flex;
+  flex-direction: column;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.9rem, min(4.4vw, 8svh), 5.6rem);
+  line-height: 0.95;
+  white-space: pre;
+}
+
+.album-track-feat,
+.album-track-cue {
+  margin-top: 0.35em;
+  font-size: 0.24em;
+  letter-spacing: 0.28em;
+  font-weight: 400;
+  color: rgba(194, 214, 224, 0.75);
+}
+
+.album-track-cue {
+  color: #c2d6e0;
+}
+
+.album-track.is-hidden .album-track-name > span[aria-hidden='true']:first-of-type {
+  color: rgba(80, 130, 145, 0.85);
+}
+
+.album-scene-hint {
+  position: absolute;
+  right: var(--pad-x);
+  bottom: var(--bottom);
+  font-family: 'Antonio', sans-serif;
+  font-size: clamp(0.7rem, 0.9vw, 0.9rem);
+  letter-spacing: 0.3em;
+  color: rgba(228, 238, 242, 0.5);
+}
+
+@media (max-width: 760px) {
+  .album-scene-barrel {
+    left: var(--pad-x);
+    top: 33%;
+  }
+
+  .album-scene-info {
+    max-width: none;
+    right: var(--pad-x);
+  }
+
+  .album-scene-title {
+    font-size: clamp(2rem, 11vw, 3.4rem);
+  }
+
+  .album-scene-note,
+  .album-scene-hint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .album-track {
+    transition: none;
+  }
+}
+
+/* ---------- the album's own colour (read from its cover) on the accents ---------- */
+.story-albums-name .story-albums-year,
+.album-scene-kicker {
+  color: var(--album-tint, rgba(228, 238, 242, 0.6));
+  transition: color 0.6s ease;
+}
+
+.story-albums-open-line {
+  background: var(--album-tint, currentColor);
+}
+
+.story-albums-open:hover,
+.story-albums-open:focus-visible {
+  border-color: var(--album-tint, rgba(194, 214, 224, 0.7));
+}
+
+.album-track.is-active .album-track-no {
+  color: var(--album-tint, #c2d6e0);
+}
+
+.album-track.is-active .album-track-name > span[aria-hidden='true']:first-of-type {
+  text-shadow: 0 0 1.2em color-mix(in srgb, var(--album-tint, #c2d6e0) 45%, transparent);
+}
+
+.album-scene-close:hover,
+.album-scene-close:focus-visible {
+  background: var(--album-tint, #c2d6e0);
+}
