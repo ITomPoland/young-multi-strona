@@ -23,6 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 
-# Third-party photos used while building (rights not cleared for publishing yet)
-public/studio/
+# Raw sources (the 91 MB Meshy model, reference photos): public/studio/ is built from them
 art/

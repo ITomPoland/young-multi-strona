@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 //   /studio/multi-head.glb       the solid head (simplified)
 //   /studio/multi-head-dots.bin  the dots, sampled on the full-resolution model
 //   /studio/multi-portrait.jpg   the photo, projected onto both from the front (PHOTO_FIT)
-// The files are not in git (likeness / photo rights not cleared yet): when they are missing,
+// (Published with the owner's consent.) If the files are ever missing,
 // loadHeadAsset() resolves to null and the studio keeps its placeholder head.
 //
 // HEAD_FIT places the model (in its own coordinates) on the studio head: centre of the

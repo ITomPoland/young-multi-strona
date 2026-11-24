@@ -18,24 +18,22 @@ Notatka do kontynuacji na innym komputerze. Scenariusz całej sekcji: `SCENARIUS
 - **Telefon:** na wąskim ekranie kamera kończy dalej i przesuwa kadr, żeby głowa mieściła się w poprzek.
 - Bez plików modelu/zdjęcia strona pokazuje zastępczą głowę (kula + okulary z kodu) i nic się nie wywala.
 
-## Pliki, których NIE MA w gicie (trzeba przenieść ręcznie!)
+## Pliki
 
-Foldery `public/studio/` i `art/` są w `.gitignore` (wizerunek Multiego + zdjęcie bez zgody na publikację).
-Na drugi komputer skopiuj:
+Głowa i zdjęcie są w repo (`public/studio/`, publikowane za zgodą): `multi-head.glb`, `multi-head-dots.bin`, `multi-portrait.jpg`. Poza gitem zostaje tylko surowy model z Meshy (`art/meshy/multi-head-raw.glb`, 91 MB: `Meshy_AI_Neon_Dread_Silence_20261124_generate.glb`). Jest potrzebny wyłącznie, żeby przebudować głowę skryptem (np. po zmianie konturu szyby).
 
-| Plik | Skąd | Uwagi |
-|---|---|---|
-| `art/meshy/multi-head-raw.glb` | z Meshy: `Meshy_AI_Neon_Dread_Silence_20261124_generate.glb` (91 MB) | surowy model, wejście skryptu |
-| `public/studio/multi-portrait.jpg` | zbliżenie twarzy 2000×2000 (to z okularami i dredami, kadr do ust), zapisane jako JPG | zdjęcie rzutowane na głowę; `PHOTO_FIT`, `PHOTO_REG` i `VISOR_TRACE` są skalibrowane DOKŁADNIE pod ten kadr |
-| `public/studio/multi-ai-input.png` | (opcjonalnie) | rozjaśniony kadr głowy, wejście do generatorów 3D |
-
-`public/studio/multi-head.glb` i `public/studio/multi-head-dots.bin` się NIE kopiuje — generuje je skrypt.
+| Plik | Uwagi |
+|---|---|
+| `public/studio/multi-portrait.jpg` | zbliżenie twarzy 2000×2000 (okulary, dredy, kadr do ust); `PHOTO_FIT`, `PHOTO_REG` i `VISOR_TRACE` są skalibrowane DOKŁADNIE pod ten kadr |
+| `public/studio/multi-head.glb`, `multi-head-dots.bin` | wynik `scripts/prepare-head.mjs` z surowego modelu |
 
 ## Uruchomienie
 
 ```powershell
 npm install
 ```
+
+Tylko przy przebudowie głowy (wymaga surowego modelu w `art/meshy/`):
 
 ```powershell
 node --max-old-space-size=6144 scripts/prepare-head.mjs art/meshy/multi-head-raw.glb public/studio 150000 150000
@@ -57,7 +55,6 @@ Kontur szyby jest w `scripts/prepare-head.mjs` → `VISOR_TRACE` (piksele zdjęc
 - Preloader czeka na: fonty, pierwszą klatkę historii (zdjęcie pokoju, okładki), **głowę (model, kropki, zdjęcie) i logo YFL**, a potem na **rozgrzewkę GPU** (`warmUp` w `Compositor.jsx`, `whenStoryWarm` w `storyReady.js`): wszystkie shadery obu scen skompilowane (także ukryta wieża, studio i pył z hero), wszystkie tekstury i modele wgrane, poza ekranem, do celu tego samego typu co prawdziwe. Pasek staje na 94%, dopóki rozgrzewka się nie skończy (limit 9 s).
 - Zmierzone (dev): po preloaderze, przez całą historię do przodu i do tyłu, **0 kompilacji shaderów i 0 nowych tekstur/buforów**.
 - Pułapki, które to psuły: przebiegi Kompozytora przebudowywały się przy zmianie poziomu jakości (koniec preloadera) i wyrzucały rozgrzane programy (teraz `glow` to uniform); bufory pyłu i odbicia przydzielały się przy pierwszym użyciu (teraz przy zmianie rozmiaru).
-- Uwaga: `npm run build` kopiuje lokalne `public/studio/` (głowa, zdjęcie) do `dist/`. Wdrożenie z gita ich nie ma (pokazuje zastępczą głowę), ale ręczne wrzucenie lokalnego `dist/` opublikowałoby wizerunek i zdjęcie bez zgody.
 
 ## Naprawione błędy
 
@@ -71,8 +68,7 @@ Kontur szyby jest w `scripts/prepare-head.mjs` → `VISOR_TRACE` (piksele zdjęc
 
 1. S7: kropki z głowy spływają i składają się w koszulkę STEALTH ERA (z `tshirt.avif`), potem bluzy, każda odsłania się jak okładka albumu.
 2. Test na prawdziwym telefonie (wydajność: 150k kropek + świat w teksturze; kadr sprawdzony tylko w emulacji 390×844).
-3. **Prawa:** zgoda na zdjęcie z Apple Music i wizerunek (YFL / wytwórnia / fotograf) zanim pliki pójdą na produkcję. Do tego czasu produkcja pokazuje zastępczą głowę.
-4. Dopracowanie dyskografii (patrz notatka przy S5 w `SCENARIUSZ.md`).
+3. Dopracowanie dyskografii (patrz notatka przy S5 w `SCENARIUSZ.md`).
 
 ## Mapa kodu
 
