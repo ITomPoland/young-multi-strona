@@ -1,10 +1,11 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { motion, useTransform, useMotionValueEvent } from 'framer-motion';
 import { LATEST_RELEASE } from '../data/release';
-import { CHAPTER_RANGES, BEATS, STORY_SCROLL_VH, FALLBACK_FADE_VH, anchorVh } from './story.config';
+import { CHAPTER_RANGES, BEATS, STORY_SCROLL_VH, FALLBACK_FADE_VH, anchorVh, ABOUT, REVEAL } from './story.config';
 import { createStoryState } from './storyState';
 import { hasWebGL } from './webgl';
 import AlbumsOverlay from './AlbumsOverlay';
+import AboutOverlay from './AboutOverlay';
 import { usePerformance } from '../context/PerformanceContext';
 import './StorySection.css';
 
@@ -44,7 +45,9 @@ const StorySection = React.forwardRef(function StorySection({ storyVh, startAnim
     // ...and while the album ring is on screen (it has its own titles bottom-left)
     const [albumsStart, albumsEnd] = CHAPTER_RANGES.albums;
     const onRing = v > albumsStart - 40 && v < albumsEnd;
-    const show = v > turnStart + 30 && !nearEnd && !onRing;
+    // ...and during "o mnie" (its read-out runs down to the bottom on phones)
+    const onAbout = v > ABOUT.intro[0] - 10 && v < REVEAL.end;
+    const show = v > turnStart + 30 && !nearEnd && !onRing && !onAbout;
     setMiniVisible((prev) => (prev === show ? prev : show));
   });
 
@@ -64,6 +67,7 @@ const StorySection = React.forwardRef(function StorySection({ storyVh, startAnim
         {/* anchors for the menu / SEO: the single and the discography live inside the story */}
         <span id="nowa-piosenka" className="story-anchor" style={{ top: `calc(${anchorVh('nowa-piosenka')} * 1vh)` }} />
         <span id="albumy" className="story-anchor" style={{ top: `calc(${anchorVh('dyskografia')} * 1vh)` }} />
+        <span id="o-mnie" className="story-anchor" style={{ top: `calc(${anchorVh('o-mnie')} * 1vh)` }} />
 
         <div className="story-sticky">
           {webgl ? (
@@ -159,6 +163,9 @@ const StorySection = React.forwardRef(function StorySection({ storyVh, startAnim
 
           {/* === S5: album ring === */}
           {webgl && <AlbumsOverlay storyVh={storyVh} state={stateRef} />}
+
+          {/* === S6 hold: o mnie (the scan's read-out) === */}
+          {webgl && <AboutOverlay storyVh={storyVh} state={stateRef} />}
         </div>
       </section>
 

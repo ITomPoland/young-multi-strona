@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { useFrame, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ALBUMS } from '../../data/albums';
-import { ALBUM_SPACING, ALBUM_RISE } from '../story.config';
+import { ALBUM_SPACING, ALBUM_RISE, TOWER_PANELS } from '../story.config';
 import { TOWER, TOWER_HOLE_SCALE, PITCH_X, HOLE_CENTER, GLSL_HOLE } from './calibration';
 import { getHoleTexture } from './hole';
 import { ensureScene, stepScene } from '../sceneState';
@@ -43,7 +43,7 @@ const TICKERS = [
   { twist: 1, h: 0.36, speed: 0.018, ph: [0.0, 1.7, 4.1, 0.6, 2.3, 0.9, 3.3] },
   { twist: -1, h: 0.5, speed: -0.012, ph: [2.9, 0.4, 1.2, 3.8, 5.1, 2.2, 0.3] }
 ];
-const RIBBON_Q = [-1.9, ALBUMS.length - 1 + 0.95]; // from before the wound to past the last album
+const RIBBON_Q = [-1.9, TOWER_PANELS - 1 + 0.95]; // from before the wound to past the last panel
 const RIBBON_SEGS_PER_Q = 120;
 const R_BEHIND = BILL_R - 0.4; // behind a cover (the skin is 0.15 further in)
 const R_FRONT = BILL_R + 0.75; // in front of a cover (clear of it coming forward in focus)
@@ -527,6 +527,7 @@ function useCovers() {
   return textures;
 }
 
+const PANELS = Array.from({ length: TOWER_PANELS }, (_, i) => ALBUMS[i % ALBUMS.length]);
 const OPEN_DEPTH = 0.6; // metres in front of the camera where the opened album lands
 const _ndc = new THREE.Vector2();
 const _a = new THREE.Vector3();
@@ -576,6 +577,62 @@ export default function Tower({ state }) {
     return Math.max(1, Math.round((2 * Math.PI * TICKER_R) / runMetres));
   };
 
+  // EVERY uniform object (and the panels' userData, which holds their lock state) is made once:
+  // the component re-renders now and then (a parent's state changes, e.g. the mini-player
+  // showing up as the albums end) and inline objects would hand the materials fresh ones,
+  // resetting focus, bend and reveal mid-flight (the cover "revealed again", the panels
+  // shrinking and growing back)
+  const skyU = useMemo(() => ({ uOn: { value: 1 }, ...tintU }), [tintU]);
+  const skinU = useMemo(() => ({ uOn: { value: 1 }, uHole: { value: holeTex }, ...tintU }), [tintU, holeTex]);
+  const panelData = useMemo(() => PANELS.map((_, i) => ({ album: i })), []);
+  const panelU = useMemo(
+    () =>
+      PANELS.map((album, i) => ({
+        uMap: { value: textures[i % ALBUMS.length] },
+        uBright: { value: 0.5 },
+        uTime: { value: i * 7.3 },
+        uSeed: { value: i * 1.618 },
+        uThetaC: { value: thetaOf(albumPhi(i)) },
+        uR: { value: BILL_R },
+        uFlat: { value: 0 },
+        uFocus: { value: 0 },
+        uVel: { value: 0 },
+        uOpen: { value: 0 },
+        uPull: { value: 0 },
+        uDir: { value: 1 },
+        uClick: { value: new THREE.Vector2(0.5, 0.5) },
+        uCamM: { value: new THREE.Matrix4() },
+        uFr: { value: new THREE.Vector4(-1, 1, -1, 1) },
+        uDepth: { value: OPEN_DEPTH },
+        uGlitch: { value: 0 },
+        uUpcoming: { value: album.upcoming ? 1 : 0 },
+        uDim: { value: 0 },
+        uCol: { value: new THREE.Vector3(...colors[i % ALBUMS.length]) },
+        uReveal: { value: 0 },
+        // where the cracks start: off-centre, a different spot on every cover
+        uCrackC: { value: new THREE.Vector2(0.5 + 0.14 * Math.sin(i * 2.3 + 0.6), 0.52 + 0.12 * Math.cos(i * 1.7 + 0.3)) }
+      })),
+    [textures, colors]
+  );
+  const tickerU = useMemo(
+    () =>
+      TICKERS.map((t, k) => ({
+        uMap: { value: ticker },
+        uOffset: { value: 0 },
+        uOn: { value: 1 },
+        uHole: { value: holeTex },
+        uRepeat: { value: repeatFor(t.h) },
+        uTime: { value: k * 3.1 },
+        uTwist: { value: t.twist },
+        uPh: { value: t.ph },
+        uH: { value: BILL_H / 2 + RIBBON_GAP + t.h / 2 },
+        uW: { value: t.h },
+        ...tintU
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ticker, holeTex, tintU]
+  );
+
   useFrame((_, dt) => {
     const s = state.current;
     const g = groupRef.current;
@@ -599,17 +656,18 @@ export default function Tower({ state }) {
 
     // --- the colour of the moment: the album in focus (blending between two), the room's
     //     light while we are still at the wound; the glow sits on the album being looked at ---
+    // (past LOST MEDIA the panels repeat the covers: album = panel % n)
     const n = ALBUMS.length;
-    const fc = Math.min(Math.max(f, -1), n - 1);
+    const fc = Math.min(Math.max(f, -1), TOWER_PANELS - 1);
     const i0 = Math.floor(fc);
     const t = fc - i0;
-    const c0 = i0 < 0 ? ROOM_LIGHT : colors[i0];
-    const c1 = colors[Math.min(i0 + 1, n - 1)];
+    const c0 = i0 < 0 ? ROOM_LIGHT : colors[i0 % n];
+    const c1 = colors[Math.min(i0 + 1, TOWER_PANELS - 1) % n];
     _tint.set(c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t, c0[2] + (c1[2] - c0[2]) * t);
     const kt = 1 - Math.exp(-dt * 4);
     tintU.uTint.value.lerp(_tint, kt);
     tintU.uTintAmt.value = s.clean ?? 0;
-    panelCenter(i0, _a).lerp(panelCenter(Math.min(i0 + 1, n - 1), _b), t);
+    panelCenter(i0, _a).lerp(panelCenter(Math.min(i0 + 1, TOWER_PANELS - 1), _b), t);
     tintU.uFocusDir.value.lerp(_a.sub(camera.position).normalize(), kt).normalize();
     if (skyRef.current) skyRef.current.position.copy(camera.position);
 
@@ -617,6 +675,9 @@ export default function Tower({ state }) {
       const u = o.material?.uniforms;
       if (!u) return;
       if (u.uOn) u.uOn.value = 1 - Math.min(Math.max(sc.open, 0), 1) * 0.85;
+      // set on every material: a material may hold its own copy of the uniform (the number is
+      // copied, not shared), so setting tintU alone left the void black on the first pass
+      if (u.uTintAmt) u.uTintAmt.value = tintU.uTintAmt.value;
       if (u.uTime) u.uTime.value += dt;
       if (o.userData.album !== undefined) {
         const i = o.userData.album;
@@ -629,12 +690,21 @@ export default function Tower({ state }) {
         u.uVel.value = (s.towerVel ?? 0) * (1 - sc.open);
         // the moment the camera locks on: a short glitch burst, and the crack run starts
         // (an event at its own speed, not scrubbed by the scroll)
-        const locked = u.uFocus.value > (o.userData.locked ? 0.45 : 0.62);
-        if (locked && !o.userData.locked) u.uGlitch.value = 1;
-        o.userData.locked = locked;
-        u.uReveal.value = locked
-          ? Math.min(1, u.uReveal.value + dt * REVEAL_IN)
-          : Math.max(0, u.uReveal.value - dt * REVEAL_OUT);
+        // The covers coming round again past LOST MEDIA are clean from the start (no cover
+        // replays its glitch / crack run in the glass), and in the reveal (the tower is only a
+        // reflection now) a cover may still lock on, but never unlocks again.
+        const repeat = i >= ALBUMS.length;
+        if (repeat) {
+          o.userData.locked = true;
+          u.uReveal.value = 1;
+        } else {
+          const locked = (s.studioOn && o.userData.locked) || u.uFocus.value > (o.userData.locked ? 0.45 : 0.62);
+          if (locked && !o.userData.locked) u.uGlitch.value = 1;
+          o.userData.locked = locked;
+          u.uReveal.value = locked
+            ? Math.min(1, u.uReveal.value + dt * REVEAL_IN)
+            : Math.max(0, u.uReveal.value - dt * REVEAL_OUT);
+        }
         u.uGlitch.value = Math.max(0, u.uGlitch.value - dt * 2.4);
         // opened / dimmed while another album is open
         const mine = sc.index === i;
@@ -665,25 +735,25 @@ export default function Tower({ state }) {
           fragmentShader={SKY_FRAG}
           side={THREE.BackSide}
           depthWrite={false}
-          uniforms={{ uOn: { value: 1 }, ...tintU }}
+          uniforms={skyU}
         />
       </mesh>
 
       {/* the skin, with the wound we flew out of */}
       <mesh position={[TOWER.x, (TOWER.top + TOWER.bottom) / 2, TOWER.z]}>
         <cylinderGeometry args={[TOWER.radius, TOWER.radius, TOWER.top - TOWER.bottom, 160, 1, true]} />
-        <shaderMaterial vertexShader={SHELL_VERT} fragmentShader={SHELL_FRAG} uniforms={{ uOn: { value: 1 }, uHole: { value: holeTex }, ...tintU }} />
+        <shaderMaterial vertexShader={SHELL_VERT} fragmentShader={SHELL_FRAG} uniforms={skinU} />
       </mesh>
 
-      {/* album billboards, spiralling up and round */}
-      {ALBUMS.map((album, i) => (
+      {/* album billboards, spiralling up and round (past LOST MEDIA the covers come round again) */}
+      {PANELS.map((album, i) => (
         <mesh
-          key={album.id}
+          key={`${album.id}-${i}`}
           ref={(m) => {
             panelRefs.current[i] = m;
           }}
           position={[TOWER.x, albumY(i), TOWER.z]}
-          userData={{ album: i }}
+          userData={panelData[i]}
           frustumCulled={false}
         >
           <cylinderGeometry args={[BILL_R, BILL_R, BILL_H, 64, 32, true, thetaOf(albumPhi(i)) - billArc / 2, billArc]} />
@@ -691,31 +761,7 @@ export default function Tower({ state }) {
             vertexShader={PANEL_VERT}
             fragmentShader={PANEL_FRAG}
             side={THREE.DoubleSide}
-            uniforms={{
-              uMap: { value: textures[i] },
-              uBright: { value: 0.5 },
-              uTime: { value: i * 7.3 },
-              uSeed: { value: i * 1.618 },
-              uThetaC: { value: thetaOf(albumPhi(i)) },
-              uR: { value: BILL_R },
-              uFlat: { value: 0 },
-              uFocus: { value: 0 },
-              uVel: { value: 0 },
-              uOpen: { value: 0 },
-              uPull: { value: 0 },
-              uDir: { value: 1 },
-              uClick: { value: new THREE.Vector2(0.5, 0.5) },
-              uCamM: { value: new THREE.Matrix4() },
-              uFr: { value: new THREE.Vector4(-1, 1, -1, 1) },
-              uDepth: { value: OPEN_DEPTH },
-              uGlitch: { value: 0 },
-              uUpcoming: { value: album.upcoming ? 1 : 0 },
-              uDim: { value: 0 },
-              uCol: { value: new THREE.Vector3(...colors[i]) },
-              uReveal: { value: 0 },
-              // where the cracks start: off-centre, a different spot on every cover
-              uCrackC: { value: new THREE.Vector2(0.5 + 0.14 * Math.sin(i * 2.3 + 0.6), 0.52 + 0.12 * Math.cos(i * 1.7 + 0.3)) }
-            }}
+            uniforms={panelU[i]}
           />
         </mesh>
       ))}
@@ -727,19 +773,7 @@ export default function Tower({ state }) {
             side={THREE.DoubleSide}
             vertexShader={RIBBON_VERT}
             fragmentShader={TICKER_FRAG}
-            uniforms={{
-              uMap: { value: ticker },
-              uOffset: { value: 0 },
-              uOn: { value: 1 },
-              uHole: { value: holeTex },
-              uRepeat: { value: repeatFor(t.h) },
-              uTime: { value: k * 3.1 },
-              uTwist: { value: t.twist },
-              uPh: { value: t.ph },
-              uH: { value: BILL_H / 2 + RIBBON_GAP + t.h / 2 },
-              uW: { value: t.h },
-              ...tintU
-            }}
+            uniforms={tickerU[k]}
           />
         </mesh>
       ))}

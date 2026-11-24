@@ -4,6 +4,9 @@ import * as THREE from 'three';
 import { MeshSurfaceSampler } from 'three/examples/jsm/math/MeshSurfaceSampler.js';
 import { makeHeadGeometry, makeNeckGeometry, makeGlasses, HEAD_TOP, HEAD_BOTTOM, EYE_Y, GLSL_LENS_INSIDE, LENS_PLANE, LENS_BULGE } from './headParts';
 import { loadHeadAsset, HEAD_FIT, PHOTO_FIT } from './headAsset';
+import { ABOUT } from '../story.config';
+import { makeShapes, PAD_FEATURE_Z } from './aboutShapes';
+import logoUrl from '../../assets/logoyflbiale.avif';
 
 // =====================================================================
 // S6: THE STUDIO. The tower was a reflection in Multi's sunglasses.
@@ -20,10 +23,13 @@ import { loadHeadAsset, HEAD_FIT, PHOTO_FIT } from './headAsset';
 //  3. The scan: a laser line runs down the head; above it the head is dots (from the hero's
 //     dust: the story closes its loop), below it still the solid head. The glasses stay.
 //  4. Hold: the head follows the cursor, the cursor pushes the dots away, they flow back.
+// The key light is a spot on the face: the shoulders (and the cut edges of the bust) sink
+// into the dark studio.
 //
-// PLACEHOLDER: the head is a deformed sphere. The real one (a .glb from an AI image-to-3D,
-// with Multi's photo projected onto it from the photo's camera) replaces makeHeadGeometry;
-// everything else stays. See docs/storytelling/SCENARIUSZ.md, S6.
+// The real head (scripts/prepare-head.mjs: the Meshy model + Multi's Balenciaga shield as a
+// clean glass, outline traced on the portrait) is loaded by headAsset.js, the portrait is
+// projected onto it from the front. Without those files: the placeholder head (headParts.js).
+// See docs/storytelling/STAN-S6.md.
 // =====================================================================
 
 const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
@@ -39,7 +45,9 @@ const END_YAW = 26 * DEG; // the 3/4 view
 const END_PITCH = -5 * DEG;
 const FOV0 = 54; // degrees, at the seam
 const RIM = new THREE.Color(0.55, 0.85, 0.95); // the studio's turquoise rim light
+const HY_END = 0.056; // the reflection's final scale: metres of glass per unit of the world's NDC (vertical)
 const POINTS = 90000;
+const VISOR_POINTS = 9000;
 
 // ---------------- shaders ----------------
 const HEAD_VERT = /* glsl */ `
@@ -67,6 +75,12 @@ const GLSL_PHOTO = /* glsl */ `
   float photoW(vec3 hn, vec2 uv) {
     float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
     return smoothstep(0.05, 0.5, hn.z) * inside * uHasPhoto;
+  }
+  // the key is a spot on the face: the shoulders sink into the dark studio (and with them the
+  // edges where the bust is cut off). Head space: an ellipse round the face
+  float spotK(vec3 h) {
+    float r = length(vec2(h.x / 0.17, (h.y - 0.01) / 0.2));
+    return 1.0 - 0.985 * smoothstep(0.62, 1.18, r);
   }
 `;
 
@@ -102,7 +116,8 @@ const HEAD_FRAG = /* glsl */ `
     if (uScanOn > 0.5 && above > 0.0) discard;
     if (!gl_FrontFacing) {
       // inside, seen through the cut: a hot section at the line, dark a little below it
-      vec3 cut = uRim * (exp(above / 0.005) * 1.8 + exp(above / 0.03) * 0.15) * uScanOn;
+      // (the spot's falloff too: no glowing outline of the bust's cut-off bottom)
+      vec3 cut = uRim * (exp(above / 0.005) * 1.8 + exp(above / 0.03) * 0.15) * uScanOn * spotK(vHead);
       gl_FragColor = vec4(cut + vec3(0.004, 0.005, 0.006), 1.0);
       return;
     }
@@ -117,7 +132,8 @@ const HEAD_FRAG = /* glsl */ `
     vec3 photo = texture2D(tPhoto, clamp(puv, 0.0, 1.0)).rgb;
     vec3 unseen = vec3(0.008, 0.01, 0.012) + uRim * rim * 0.55;
     vec3 col = mix(plain, mix(unseen, photo * 1.3 + uRim * rim * 0.22, pw), uHasPhoto);
-    float band = exp(-pow(above / 0.0035, 2.0)) * uScanOn;
+    col *= spotK(vHead);
+    float band = exp(-pow(above / 0.0035, 2.0)) * uScanOn * spotK(vHead);
     col += uRim * band * 3.5;
     gl_FragColor = vec4(col, 1.0);
   }
@@ -139,11 +155,14 @@ const FRAME_FRAG = /* glsl */ `
 `;
 
 const LENS_VERT = /* glsl */ `
+  attribute vec2 aEdge; // x: distance to the glass's edge (model units; Multi's visor only)
   varying vec2 vUv;
   varying vec3 vWorld;
   varying vec3 vN;
+  varying float vEdge;
   void main() {
     vUv = uv;
+    vEdge = aEdge.x;
     vec4 w = modelMatrix * vec4(position, 1.0);
     vWorld = w.xyz;
     vN = normalize(mat3(modelMatrix) * normal);
@@ -152,24 +171,34 @@ const LENS_VERT = /* glsl */ `
 `;
 
 // THE LENS. One mapping of the world picture onto the glass, in LENS space:
-//  - at the seam (uK = 0) the world picture covers exactly the patch of glass the camera sees
-//    (uE0: that patch's half size), so it matches the frame before; uB blends in from the
-//    plain screen position over the first few percent of the pull-back, where both agree
-//  - uK -> 1: the patch grows to the whole glass (log-scale), the convex mirror bends it
-//    (edges compressed), and it swims a little with the viewing angle (uSwim)
+//  - the world is GLUED to the glass: its centre stays at the camera's anchor (where we
+//    started), and uH (metres of glass per unit of the world's NDC) is, at the seam, exactly
+//    the patch the camera sees: the frame before, pixel for pixel (uB blends in from the
+//    plain screen position over the first few percent). Then uH follows the view (the world
+//    holds still on screen) up to its final scale, and stays there: covers all the glass. The world
+//    texture holds only the part on the visible glass (uRect; Compositor renders the world
+//    camera's frustum narrowed / widened to it), so it stays sharp at every distance
+//  - uK -> 1: the convex mirror bends it (edges compressed), it swims a little with the
+//    viewing angle (uSwim); past its edge it fades into the dark
+//  - a hairline on the shield's polished edge catches the light (vEdge: Multi's visor only)
 //  - uBulge (Takt 1, still full-screen): convex glass, chromatic fringes, darker rim
 //  - uWorldK: the world fades out of the glass as the head is revealed; what stays is what
 //    sunglasses really reflect here: the dark studio, a softbox, the turquoise rim light
 const LENS_FRAG = /* glsl */ `
+  uniform float uScanY;
+  uniform float uScanOn;
   uniform sampler2D tWorld;
   uniform vec2 uRes;
   uniform float uK;
   uniform float uB;
   uniform float uBulge;
   uniform float uWorldK;
-  uniform vec2 uE0;
+  uniform vec2 uH; // lens-space metres per unit of the world's NDC (x, y), set per frame
+  uniform vec4 uRect; // the part of the world's NDC the world texture holds (min.xy, max.xy)
+  uniform vec2 uAnchorUv; // where the camera starts on the glass: the world's NDC origin is glued here
   uniform vec2 uPlane;
-  uniform vec2 uAnchorUv; // where the camera starts on the glass (UV)
+  uniform float uEdgeOn; // 1: vEdge is real (Multi's visor), 0: the code shield
+  uniform float uEdgeScale; // model units -> metres
   uniform float uOutline; // 1: cut the glass by the analytic outline (the code-built shield)
   uniform vec2 uSwim;
   uniform float uSide;
@@ -177,6 +206,7 @@ const LENS_FRAG = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vWorld;
   varying vec3 vN;
+  varying float vEdge;
   ${GLSL_LENS_INSIDE}
 
   // what the glasses reflect in the studio (world directions)
@@ -193,7 +223,15 @@ const LENS_FRAG = /* glsl */ `
     float box = (1.0 - smoothstep(0.14, 0.26, abs(a))) * (1.0 - smoothstep(0.035, 0.09, abs(b))) * step(0.0, dot(r, L));
     // a softbox is brighter in the middle, with a soft falloff to its edges
     box *= 0.6 + 0.4 * (1.0 - smoothstep(0.0, 0.2, abs(a)));
-    col += vec3(0.95, 0.97, 1.0) * box * 0.6;
+    col += vec3(0.95, 0.97, 1.0) * box * 0.32;
+    // a long strip light overhead, in front: the clean highlight line along the visor's upper
+    // part (where the glass turns up), sliding as the camera moves
+    float el = r.y;
+    float strip0 = (1.0 - smoothstep(0.012, 0.03, abs(el - 0.42))) * smoothstep(0.2, 0.5, r.z) * (1.0 - smoothstep(0.35, 0.6, abs(r.x)));
+    col += vec3(0.85, 0.9, 0.95) * strip0 * 0.55;
+    // the big diffuser over the set: the upper part of the glass (turning up) goes a soft grey,
+    // as on the photo
+    col += vec3(0.07, 0.078, 0.085) * smoothstep(0.05, 0.55, el) * smoothstep(-0.2, 0.4, r.z);
     // the turquoise rim light, a tall strip behind to the right
     vec3 R2 = normalize(vec3(0.85, 0.1, -0.5));
     vec3 R2x = normalize(cross(vec3(0.0, 1.0, 0.0), R2));
@@ -204,36 +242,41 @@ const LENS_FRAG = /* glsl */ `
 
   vec3 sampleWorld(vec2 uv, float ca) {
     vec2 c = uv - 0.5;
-    return vec3(
+    vec3 col = vec3(
       texture2D(tWorld, clamp(0.5 + c * (1.0 + ca), 0.001, 0.999)).r,
       texture2D(tWorld, clamp(uv, 0.001, 0.999)).g,
       texture2D(tWorld, clamp(0.5 + c * (1.0 - ca), 0.001, 0.999)).b
     );
+    // past the picture's edge the reflection fades into the dark (never a framed postcard)
+    vec2 out2 = max(-uv, uv - 1.0);
+    float outside = max(out2.x, out2.y);
+    return col * (1.0 - smoothstep(0.0, 0.12, outside));
   }
 
   void main() {
     if (uOutline > 0.5 && lensInside(vUv, uSide) > 1.0) discard;
+    // the scan takes the glass too (above the line it is dots, like the head)
+    float above = vWorld.y - uScanY;
+    if (uScanOn > 0.5 && above > 0.0) discard;
     float aspect = uRes.x / uRes.y;
     vec2 suv = gl_FragCoord.xy / uRes;
 
-    // the world picture in lens space: the seam patch growing (log-scale) to the whole glass
-    // lens space: centred on the camera's anchor at the seam, on the glass's middle at the end
-    vec2 lxy = (vUv - mix(uAnchorUv, vec2(0.5), uK)) * uPlane;
-    // the whole world picture covers the visor (cropped top and bottom, it is a wide glass)
-    float e1x = max(uPlane.x * 0.46, uPlane.y * 0.46 * aspect);
-    vec2 E1 = vec2(e1x, e1x / aspect);
-    vec2 E = uE0 * pow(E1 / uE0, vec2(uK));
-    vec2 luv = 0.5 + lxy / (2.0 * E);
-    // convex mirror: the edges of the glass squeeze the picture; it swims with the angle
+    // the world on the glass: glued to it, its centre (NDC 0) at the camera's anchor, uH metres
+    // per NDC unit (grows slowly: the reflection zooms out, it never slides about)
+    vec2 nw = (vUv - uAnchorUv) * uPlane / uH;
+    // convex mirror: the edges of the glass squeeze it towards the anchor; it swims with the angle
     vec2 rn = (vUv - 0.5) * 2.0;
-    luv = 0.5 + (luv - 0.5) * (1.0 - 0.22 * uK * dot(rn, rn)) + uSwim;
-    vec2 uv = mix(suv, luv, uB);
+    nw = nw * (1.0 - 0.18 * uK * dot(rn, rn)) + uSwim;
+    // the first few percent: the plain screen position (where both agree)
+    vec2 nd = mix(suv * 2.0 - 1.0, nw, uB);
 
-    // Takt 1: convex glass bulge (in picture space, so it carries on through the blend)
-    vec2 pc = (uv - 0.5) * vec2(aspect, 1.0);
+    // Takt 1: convex glass bulge round the middle of the screen (= the anchor)
+    vec2 pc = nd * 0.5 * vec2(aspect, 1.0);
     float r2 = dot(pc, pc);
     float bulge = uBulge * (1.0 - uK);
-    uv = 0.5 + (uv - 0.5) * (1.0 - bulge * 0.28 * r2);
+    nd *= 1.0 - bulge * 0.28 * r2;
+    // NDC -> the world texture, which holds only the part of the world on the visible glass
+    vec2 uv = (nd - uRect.xy) / (uRect.zw - uRect.xy);
     float ca = bulge * 0.006 * r2 * 2.0 + uK * 0.004 * dot(rn, rn);
     vec3 world = sampleWorld(uv, ca);
 
@@ -245,8 +288,14 @@ const LENS_FRAG = /* glsl */ `
     vec3 r = reflect(-v, n * sign(dot(n, v)));
     float glassK = max(uBulge * 0.5, uK);
     vec3 refl = world * uWorldK + studioEnv(r) * uK;
-    vec3 glass = vec3(0.012, 0.014, 0.016) + refl * mix(0.78, 1.0, fres);
+    vec3 glass = vec3(0.006, 0.007, 0.008) + refl * mix(0.78, 1.0, fres);
+    // the polished edge of the shield: a hairline that catches the studio's light
+    float e = vEdge * uEdgeScale;
+    float bevel = uEdgeOn * (1.0 - smoothstep(0.0003, 0.0016, e));
+    vec3 rb = normalize(r + vec3(0.0, 0.25, 0.0)); // an edge faces every way: it finds the overhead light
+    glass += bevel * uK * (studioEnv(rb) * 1.6 + vec3(0.05, 0.06, 0.065) + uRim * 0.12 * (1.0 - ndv));
     vec3 col = mix(world, glass, glassK);
+    col += uRim * exp(-pow(above / 0.0035, 2.0)) * 2.5 * uScanOn;
     // Takt 1: the full-screen picture darkens towards its rim (the edge of the glass)
     float svig = smoothstep(0.5, 1.1, length((suv - 0.5) * vec2(aspect, 1.0)) * 1.15) * uBulge * (1.0 - uK);
     // after: the real rim of the lens
@@ -261,6 +310,10 @@ const LENS_FRAG = /* glsl */ `
 const DOTS_VERT = /* glsl */ `
   attribute vec3 aNormal;
   attribute float aRnd;
+  // "o mnie": where this dot goes in each chapter's shape (model units, round uShapeC)
+  attribute vec3 aP1; // the game pad
+  attribute vec3 aP2; // the vinyl (flat: tilted and spun here)
+  attribute vec3 aP3; // the YFL logo
   uniform mat4 uFitM;
   ${GLSL_PHOTO}
   uniform float uScanY;
@@ -268,36 +321,90 @@ const DOTS_VERT = /* glsl */ `
   uniform float uTime;
   uniform float uDpr;
   uniform float uPx;
+  uniform vec3 uRim;
   uniform vec3 uRayO;
   uniform vec3 uRayD;
   uniform float uPush;
-  uniform vec3 uRim;
+  uniform float uMorph; // 0 head, 1 pad, 2 vinyl, 3 logo, 4 head again
+  uniform vec3 uShapeC;
+  uniform float uSpin;
+  uniform vec3 uLabelCol; // the vinyl's label: Nowa Fala's colour
+  uniform float uPadFeat; // the pad: above this (aP1.z) a dot is a button / the cross / a stick
   varying vec3 vCol;
   varying float vA;
+
+  vec3 rotX(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(p.x, c * p.y - s * p.z, s * p.y + c * p.z); }
+  vec3 rotY(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z); }
+  vec3 rotZ(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z); }
+
+  // a shape's point for this dot (model space): the head as it is, the others round the
+  // shapes' centre, floating (a slow sway), the vinyl spinning
+  vec3 shapeP(float i) {
+    if (i < 0.5 || i > 3.5) return position;
+    float sway = sin(uTime * 0.45 + i * 1.7) * 0.22;
+    if (i < 1.5) return uShapeC + rotY(rotX(aP1, -0.22 + sin(uTime * 0.6) * 0.05), sway);
+    if (i < 2.5) return uShapeC + rotY(rotX(rotZ(aP2, uSpin), -0.62), sway * 0.5);
+    return uShapeC + rotY(rotX(aP3, -0.08), sway);
+  }
+  // a smooth flow field: the turbulence the dots ride through while they change shape
+  vec3 flow(vec3 p) {
+    return vec3(sin(p.y * 1.7 + p.z * 2.3 + uTime * 0.7), sin(p.z * 1.9 + p.x * 2.1 - uTime * 0.6), sin(p.x * 2.2 + p.y * 1.6 + uTime * 0.5));
+  }
+  // a shape's own colour for this dot
+  vec3 shapeCol(float i, vec3 headCol) {
+    if (i < 0.5 || i > 3.5) return headCol;
+    float tone = 0.55 + 0.7 * fract(aRnd * 17.0);
+    if (i < 1.5) {
+      // the pad: a dark body, its buttons / cross / sticks bright (they stand proud of the face)
+      if (aP1.z > uPadFeat) return mix(vec3(0.95, 1.0, 1.0), uRim * 1.3, step(0.5, fract(aRnd * 5.0)) * 0.6);
+      return aP1.z > uPadFeat * 0.7 ? vec3(0.42, 0.5, 0.56) * tone : vec3(0.2, 0.25, 0.29) * tone;
+    }
+    if (i < 2.5) {
+      float r = length(aP2.xy);
+      // grooves catch the light in a band that stays put while the record turns
+      float sheen = pow(abs(cos(atan(aP2.y, aP2.x) + uSpin - 0.8)), 14.0);
+      vec3 grooves = vec3(0.26, 0.32, 0.36) * tone + vec3(0.85, 0.92, 0.96) * sheen * 0.9;
+      return r < 0.215 ? uLabelCol * (0.75 + 0.5 * fract(aRnd * 11.0)) : grooves;
+    }
+    return vec3(0.96, 0.98, 1.0) * (0.75 + 0.35 * fract(aRnd * 17.0));
+  }
+
   void main() {
-    vec4 w = modelMatrix * vec4(position, 1.0);
+    // --- "o mnie": which shapes, how far between them (each dot leaves at its own moment) ---
+    float m = clamp(uMorph, 0.0, 4.0);
+    float seg = min(floor(m), 3.0);
+    float lt = smoothstep(0.0, 1.0, clamp((m - seg - aRnd * 0.4) / 0.6, 0.0, 1.0));
+    float fly = sin(3.14159 * lt); // 0 at rest, 1 mid-flight
+    vec3 mp = mix(shapeP(seg), shapeP(seg + 1.0), lt);
+    // mid-flight they swirl round the shapes' axis and ride the flow (model units: 1 = 25 cm)
+    mp = uShapeC + rotY(mp - uShapeC, fly * (1.1 + aRnd * 1.4));
+    mp += flow(mp * 3.0 + aRnd * 6.0) * fly * (0.1 + 0.16 * aRnd);
+    float headK = seg < 0.5 ? 1.0 - lt : (seg > 2.5 ? lt : 0.0);
+    float shapeK = 1.0 - headK;
+
+    vec4 w = modelMatrix * vec4(mp, 1.0);
     vec3 nW = normalize(mat3(modelMatrix) * aNormal);
     vec3 hp = (uFitM * vec4(position, 1.0)).xyz;
     vec3 hn = normalize(mat3(uFitM) * aNormal);
-    float above = w.y - uScanY;
+    float above = (modelMatrix * vec4(position, 1.0)).y - uScanY;
     float shown = uScanOn > 0.5 ? smoothstep(0.0, 0.004, above) : 0.0;
     float settle = smoothstep(0.0, 0.06, above);
     vec3 jit = vec3(fract(aRnd * 13.17), fract(aRnd * 7.31), fract(aRnd * 3.73)) - 0.5;
     w.xyz += (nW * 0.02 + jit * 0.035) * (1.0 - settle);
     w.xyz += nW * sin(uTime * 1.7 + aRnd * 31.0 + w.y * 45.0) * 0.0011;
     // the cursor: pushed away from its ray, flowing back as it leaves
-    vec3 toP = w.xyz - uRayO;
-    vec3 cl = uRayO + uRayD * dot(toP, uRayD);
+    vec3 cl = uRayO + uRayD * dot(w.xyz - uRayO, uRayD);
     vec3 away = w.xyz - cl;
     float dd = length(away);
     float push = exp(-dd * dd / (0.03 * 0.03)) * uPush;
-    w.xyz += (away / max(dd, 1e-4)) * push * 0.028 + nW * push * 0.012;
+    w.xyz += (away / max(dd, 1e-4)) * push * 0.028 + nW * push * 0.012 * headK;
     vec4 mv = viewMatrix * w;
     gl_Position = projectionMatrix * mv;
     vec3 v = normalize(cameraPosition - w.xyz);
     float facing = dot(nW, v);
-    shown *= smoothstep(-0.2, 0.2, facing);
-    gl_PointSize = min(uPx * uDpr * (0.55 + 0.9 * aRnd) * (0.95 / -mv.z), 48.0) * step(0.001, shown);
+    // (the head's back faces drop out; a shape is all seen)
+    shown *= mix(smoothstep(-0.2, 0.2, facing), 1.0, shapeK);
+    gl_PointSize = min(uPx * uDpr * (0.55 + 0.9 * aRnd) * (1.0 + fly * 0.35) * (0.95 / -mv.z), 48.0) * step(0.001, shown);
     float key = max(dot(nW, normalize(vec3(-0.55, 0.55, 0.65))), 0.0);
     float rim = pow(1.0 - max(facing, 0.0), 2.5);
     vec3 teal = vec3(0.16, 0.27, 0.31) * (0.35 + 0.9 * key) + vec3(0.76, 0.84, 0.88) * key * key * 0.35 + uRim * rim * 0.7;
@@ -305,9 +412,13 @@ const DOTS_VERT = /* glsl */ `
     vec2 puv = photoUv(hp);
     float pw = photoW(hn, puv);
     vec3 photo = texture2D(tPhoto, clamp(puv, 0.0, 1.0)).rgb;
-    vCol = mix(teal, photo * 3.0 + vec3(0.03, 0.045, 0.05) + uRim * rim * 0.45, pw);
-    vCol = max(vCol, teal * 0.5); // the silhouette always reads, even where the photo is black
-    vCol += uRim * exp(-pow(above / 0.008, 2.0)) * 1.6 * uScanOn;
+    vec3 headCol = mix(teal, photo * 3.0 + vec3(0.03, 0.045, 0.05) + uRim * rim * 0.45, pw);
+    headCol = max(headCol, teal * 0.5); // the silhouette always reads, even where the photo is black
+    headCol *= spotK(hp);
+    vCol = mix(shapeCol(seg, headCol), shapeCol(seg + 1.0, headCol), lt);
+    // moving fast, they glow and turn turquoise (and back as they land)
+    vCol = mix(vCol, uRim * 1.5 + vec3(0.15), fly * 0.6);
+    vCol += uRim * exp(-pow(above / 0.008, 2.0)) * 1.6 * uScanOn * spotK(hp);
     vCol *= 1.0 + push * 0.8;
     vA = shown;
   }
@@ -378,17 +489,21 @@ export default function Studio({ state }) {
     return { scene, camera };
   }, []);
   const headGroup = useRef();
-  const follow = useRef({ u: 0, v: 0, yaw: 0, pitch: 0, push: 0, lastX: 0, lastY: 0 });
+  const follow = useRef({ u: 0, v: 0, yaw: 0, pitch: 0, push: 0, lastX: 0, lastY: 0, m: 0, mv: 0 });
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
 
   // the real head (if its files are there); the placeholder until then / without them
   const [asset, setAsset] = useState(null);
+  const [assetTried, setAssetTried] = useState(false); // loaded, or known to be missing
   const fitRef = useRef();
   const scanRange = useRef([HEAD_TOP + 0.01, HEAD_BOTTOM - 0.01]);
+  const glassBottom = useRef(-1); // the glass's lowest point (head space): once the scan is past it, no reflection
   useEffect(() => {
     let live = true;
     loadHeadAsset().then((a) => {
-      if (live && a) setAsset(a);
+      if (!live) return;
+      if (a) setAsset(a);
+      setAssetTried(true);
     });
     return () => {
       live = false;
@@ -405,6 +520,12 @@ export default function Studio({ state }) {
   const mats = useMemo(() => {
     const rim = { value: RIM };
     const scan = { uScanY: { value: HEAD_TOP }, uScanOn: { value: 0 } };
+    // the cursor's ray and how hard it pushes the dots
+    const cursor = {
+      uRayO: { value: new THREE.Vector3(0, 0, 10) },
+      uRayD: { value: new THREE.Vector3(0, 0, -1) },
+      uPush: { value: 0 }
+    };
     // shared by the solid head and the dots
     const photo = {
       tPhoto: { value: null },
@@ -414,6 +535,7 @@ export default function Studio({ state }) {
     };
     return {
       photo,
+      scan,
       head: new THREE.ShaderMaterial({
         vertexShader: SKIN_VERT,
         fragmentShader: HEAD_FRAG,
@@ -429,7 +551,8 @@ export default function Studio({ state }) {
         uB: { value: 0 },
         uBulge: { value: 0 },
         uWorldK: { value: 1 },
-        uE0: { value: new THREE.Vector2(0.004, 0.004) },
+        uH: { value: new THREE.Vector2(0.004, 0.004) },
+        uRect: { value: new THREE.Vector4(-1, -1, 1, 1) },
         uPlane: { value: LENS_PLANE.clone() },
         uAnchorUv: { value: new THREE.Vector2(0.5, 0.5) },
         uSwim: { value: new THREE.Vector2() },
@@ -444,9 +567,12 @@ export default function Studio({ state }) {
           uTime: { value: 0 },
           uDpr: { value: 1 },
           uPx: { value: 3.2 },
-          uRayO: { value: new THREE.Vector3(0, 0, 10) },
-          uRayD: { value: new THREE.Vector3(0, 0, -1) },
-          uPush: { value: 0 },
+          ...cursor,
+          uMorph: { value: 0 },
+          uShapeC: { value: new THREE.Vector3() },
+          uSpin: { value: 0 },
+          uLabelCol: { value: new THREE.Vector3(0.92, 0.56, 0.5) },
+          uPadFeat: { value: 1 },
           uRim: rim
         }
       }),
@@ -466,7 +592,7 @@ export default function Studio({ state }) {
           vertexShader: LENS_VERT,
           fragmentShader: LENS_FRAG,
           side: THREE.DoubleSide,
-          uniforms: { ...mats.lensU, uSide: { value: side }, uOutline: { value: 1 } }
+          uniforms: { ...mats.lensU, ...mats.scan, uSide: { value: side }, uOutline: { value: 1 }, uEdgeOn: { value: 0 }, uEdgeScale: { value: 1 } }
         });
         return m;
       }),
@@ -490,6 +616,10 @@ export default function Studio({ state }) {
         asset.head.computeBoundingBox();
         const box = asset.head.boundingBox.clone().applyMatrix4(g.matrix);
         scanRange.current = [box.max.y + 0.005, box.min.y - 0.005];
+        if (asset.visor) {
+          asset.visor.computeBoundingBox();
+          glassBottom.current = asset.visor.boundingBox.clone().applyMatrix4(g.matrix).min.y;
+        }
       } else {
         scanRange.current = [HEAD_TOP + 0.01, HEAD_BOTTOM - 0.01];
       }
@@ -503,6 +633,10 @@ export default function Studio({ state }) {
     return undefined;
   }, [asset, mats]);
 
+  // the glass as dots too (the scan takes it like the rest of the head): sampled on the visor
+  const visorDots = useMemo(() => (asset?.visor ? sampleDots([new THREE.Mesh(asset.visor)], VISOR_POINTS) : null), [asset]);
+  useEffect(() => () => visorDots?.dispose(), [visorDots]);
+
   // Multi's own visor (cut out of the model) as the lens: its material, the camera's anchor on
   // it (from the script's measurements, model units -> the fit), its size in lens space
   const visorAnchor = useRef();
@@ -512,7 +646,7 @@ export default function Studio({ state }) {
         vertexShader: LENS_VERT,
         fragmentShader: LENS_FRAG,
         side: THREE.DoubleSide,
-        uniforms: { ...mats.lensU, uSide: { value: 0 }, uOutline: { value: 0 } }
+        uniforms: { ...mats.lensU, ...mats.scan, uSide: { value: 0 }, uOutline: { value: 0 }, uEdgeOn: { value: 1 }, uEdgeScale: { value: HEAD_FIT.scale } }
       }),
     [mats]
   );
@@ -520,6 +654,10 @@ export default function Studio({ state }) {
   useEffect(() => {
     const info = asset?.visorInfo;
     const a = visorAnchor.current;
+    if (asset?.visor && !asset.visor.getAttribute('aEdge')) {
+      const e = asset.visor.getAttribute('uv1');
+      asset.visor.setAttribute('aEdge', e ?? new THREE.BufferAttribute(new Float32Array(asset.visor.getAttribute('position').count * 2).fill(1), 2));
+    }
     if (asset?.visor && info && a) {
       a.position.fromArray(info.anchor);
       a.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3().fromArray(info.normal).normalize());
@@ -530,6 +668,40 @@ export default function Studio({ state }) {
       mats.lensU.uAnchorUv.value.set(0.5, 0.5);
     }
   }, [asset, mats]);
+
+  // "O MNIE": every dot's place in each chapter's shape, as attributes of the dot clouds (the
+  // head's, the glass's, the placeholder's). The shapes are built in metres round the middle of
+  // the face, then brought into the fit group's units. Rebuilt once the logo picture is in.
+  const [logoImg, setLogoImg] = useState(null);
+  const [logoTried, setLogoTried] = useState(false);
+  useEffect(() => {
+    const im = new Image();
+    im.onload = () => {
+      setLogoImg(im);
+      setLogoTried(true);
+    };
+    im.onerror = () => setLogoTried(true);
+    im.src = logoUrl;
+  }, []);
+  useEffect(() => {
+    const f = asset ? HEAD_FIT : { scale: 1, position: [0, 0, 0] };
+    const C = [0, -0.012, 0.045]; // the shapes' centre: in front of the middle of the face (head space)
+    mats.dots.uniforms.uPadFeat.value = (PAD_FEATURE_Z * 0.86) / f.scale;
+    mats.dots.uniforms.uShapeC.value.set((C[0] - f.position[0]) / f.scale, (C[1] - f.position[1]) / f.scale, (C[2] - f.position[2]) / f.scale);
+    const geos = asset ? [asset.dots, visorDots].filter(Boolean) : [parts.dots];
+    geos.forEach((g, gi) => {
+      const n = g.getAttribute('position').count;
+      const sh = makeShapes(n, logoImg, 11 + gi * 31);
+      [['aP1', sh.pad], ['aP2', sh.vinyl], ['aP3', sh.logo]].forEach(([name, arr]) => {
+        // (a little smaller than the head: clear of the read-out on both sides)
+        for (let i = 0; i < arr.length; i++) arr[i] *= 0.86 / f.scale;
+        g.setAttribute(name, new THREE.BufferAttribute(arr, 3));
+      });
+    });
+    // the studio is complete (its head, if there is one, and the shapes): the Compositor may
+    // warm it up (compile + upload) now; each new version is warmed again
+    if (assetTried && logoTried) state.current.studioPrep = (state.current.studioPrep ?? 0) + 1;
+  }, [asset, assetTried, visorDots, parts, logoImg, logoTried, mats, state]);
 
   // hand the scene + camera to the Compositor
   useEffect(() => {
@@ -555,13 +727,27 @@ export default function Studio({ state }) {
 
   const buf = useMemo(() => new THREE.Vector2(), []);
 
+  const wasOn = useRef(false);
+
   useFrame((frame, dt) => {
     const s = state.current;
-    if (!s.studioOn || !headGroup.current) return;
+    if (!s.studioOn || !headGroup.current) {
+      wasOn.current = false;
+      s.studioU = 0;
+      return;
+    }
     const cam = studio.camera;
     const time = frame.clock.elapsedTime;
     const d = Math.min(dt, 0.1);
     const F = follow.current;
+    // entering the studio (again): start from where the scroll is, not from where we left it
+    if (!wasOn.current) {
+      wasOn.current = true;
+      F.u = s.revPull;
+      F.v = 0;
+      F.yaw = -0.24 * (1 - smooth(0.55, 1.0, F.u));
+      F.pitch = 0;
+    }
 
     // the scroll gives a target; the camera follows it on a spring (inertia, never a rail)
     const W = 7;
@@ -572,6 +758,7 @@ export default function Studio({ state }) {
       F.u += F.v * (d / n);
     }
     const u = Math.min(Math.max(F.u, 0), 1.03);
+    s.studioU = F.u; // the director hands the screen back to the world only once this is ~0
 
     // the head: looks off to its right, turns to the camera as it arrives; in the hold it
     // follows the cursor
@@ -599,14 +786,20 @@ export default function Studio({ state }) {
     // frame the whole way back (the camera only ever turns round it), and only at the very
     // end does the frame ease aside: the head to the left on wide screens (room for the text
     // on the right), the head up on tall ones
-    const yaw = THREE.MathUtils.lerp(lensYaw, END_YAW, smooth(0.2, 1.0, u)) + p.sx * 0.05 * hold;
+    // (in the hold the camera comes round to almost face on: the shapes read best that way)
+    const yaw = THREE.MathUtils.lerp(lensYaw, END_YAW * (1 - 0.7 * hold), smooth(0.2, 1.0, u)) + p.sx * 0.05 * hold;
     const pitch = THREE.MathUtils.lerp(0, END_PITCH, smooth(0.25, 1.0, u)) + p.sy * 0.03 * hold;
     _dir.set(Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
     _right.set(Math.cos(yaw), 0, -Math.sin(yaw));
     const settle = smooth(0.68, 1.0, u);
-    _pivot.copy(_lens).addScaledVector(_right, 0.13 * wide * settle);
-    _pivot.y -= (0.03 * wide + 0.11 * (1 - wide)) * settle;
-    const dist = D0 * Math.pow(D1 / D0, u);
+    // (on tall screens a nudge the other way: the 3/4 view swings the head right of the anchor)
+    // ("o mnie", the hold: the head steps further aside for the read-out: left / up)
+    // ("o mnie", the hold: back to the middle, the read-out goes round it)
+    _pivot.copy(_lens).addScaledVector(_right, (0.13 * wide + 0.075 * (1 - wide)) * settle * (1 - hold) + 0.025 * hold);
+    _pivot.y -= (0.03 * wide + 0.11 * (1 - wide)) * settle + 0.07 * (1 - wide) * hold;
+    // on a tall screen the long lens is narrow: end further back so the head fits across
+    const d1 = D1 * Math.pow(Math.max(1, 0.9 / aspect), 0.8);
+    const dist = D0 * Math.pow(d1 / D0, u);
     cam.position.copy(_pivot).addScaledVector(_dir, dist);
     // handheld: a slight drift once off the glass
     const drift = smooth(0.3, 1.0, u);
@@ -627,20 +820,43 @@ export default function Studio({ state }) {
     const lu = mats.lensU;
     lu.tWorld.value = s.worldTex ?? null;
     lu.uRes.value.copy(buf);
-    // the patch of glass the camera sees at the seam (half size, lens space)
-    const hh0 = (D0 - LENS_BULGE) * Math.tan((FOV0 * DEG) / 2);
-    lu.uE0.value.set(hh0 * aspect, hh0);
     lu.uB.value = smooth(0.0, 0.05, u);
     lu.uK.value = smooth(0.01, 0.4, u);
     lu.uBulge.value = s.revBulge;
-    // the world (the last album) fades out of the glass as the head is revealed
-    const worldK = 1 - smooth(0.62, 0.92, u);
+    // THE REFLECTION, glued to the glass: the world's NDC origin sits at the anchor (where the
+    // camera started), Hy metres of glass per NDC unit. At the seam Hy is exactly the patch
+    // of glass the camera sees (the frame before, pixel for pixel), and it follows the view
+    // (the world holds still on screen while the head comes into view round it) until it
+    // reaches the final scale (HY_END), where it stays: the covers are never smaller in the
+    // glass than at the end, and never spread out. A soft minimum: no kink.
+    const hh = Math.max(dist - LENS_BULGE, D0 - LENS_BULGE) * Math.tan((cam.fov * DEG) / 2);
+    const Hy = Math.pow(Math.pow(hh, -4) + Math.pow(HY_END, -4), -0.25);
+    lu.uH.value.set(Hy * aspect, Hy);
+    // the world texture holds just the world on the glass in view (so it stays sharp): the
+    // view's patch round the anchor, clipped to the glass (+ a margin)
+    const plane = lu.uPlane.value;
+    const anc = lu.uAnchorUv.value;
+    const mx = 0.08 * plane.x * lu.uK.value;
+    const my = 0.08 * plane.y * lu.uK.value;
+    const x0 = Math.max(-hh * aspect, -anc.x * plane.x - mx);
+    const x1 = Math.min(hh * aspect, (1 - anc.x) * plane.x + mx);
+    const y0 = Math.max(-hh, -anc.y * plane.y - my);
+    const y1 = Math.min(hh, (1 - anc.y) * plane.y + my);
+    const sw = 0.1 * lu.uK.value; // room for the swim
+    const r = lu.uRect.value.set(x0 / (Hy * aspect) - sw, y0 / Hy - sw, x1 / (Hy * aspect) + sw, y1 / Hy + sw);
+    // (Compositor: the world camera's frustum narrowed / widened to exactly that NDC rect)
+    s.lensRect = [(r.x + r.z) / 2, (r.y + r.w) / 2, (r.z - r.x) / 2, (r.w - r.y) / 2];
+    // the world dims in the glass as the head is revealed, but stays: the tower keeps turning
+    // in Multi's sunglasses all through the hold
+    const worldK = 1 - 0.4 * smooth(0.55, 0.95, u);
     lu.uWorldK.value = worldK;
-    s.lensWorld = worldK; // the Compositor stops rendering the world once it is gone
+    // ...until the scan has taken the glass: then the world is not drawn at all
+    const scanYNow = THREE.MathUtils.lerp(scanRange.current[0], scanRange.current[1], s.revScan);
+    s.lensWorld = s.revScan > 0 && scanYNow < glassBottom.current - 0.01 ? 0 : worldK;
     // the reflection swims a little with the viewing angle (lens space)
     _toCam.copy(cam.position).sub(_lens).normalize();
     const lx = _toCam.dot(_right.set(Math.cos(lensYaw), 0, -Math.sin(lensYaw)));
-    lu.uSwim.value.set(-lx * 0.12, -_toCam.y * 0.12).multiplyScalar(lu.uK.value);
+    lu.uSwim.value.set(-lx * 0.08, -_toCam.y * 0.08).multiplyScalar(lu.uK.value);
 
     // the photo's projection (live in dev: window.__photoFit)
     mats.photo.uPhotoFit.value.set(PHOTO_FIT.cx, PHOTO_FIT.cy, PHOTO_FIT.k, PHOTO_FIT.size);
@@ -663,6 +879,19 @@ export default function Studio({ state }) {
     du.uRayD.value.copy(raycaster.ray.direction);
     du.uPush.value = F.push;
 
+    // --- "o mnie": the dots pour from the head into each chapter's shape and back ---
+    {
+      const target = ABOUT.morph(s.vh ?? 0);
+      // a soft spring on the scroll: the dots never jerk, whatever the scroll does
+      F.mv += ((target - F.m) * 30 - F.mv * 9) * d;
+      F.m += F.mv * d;
+      if (Math.abs(target - F.m) > 1.5) F.m = target; // (a jump: a menu link, a reload)
+      du.uMorph.value = F.m;
+      du.uSpin.value = time * 0.9;
+      const lc = s.albumColors?.[0];
+      if (lc) du.uLabelCol.value.set(lc[0], lc[1], lc[2]);
+    }
+
   });
 
   return createPortal(
@@ -683,6 +912,7 @@ export default function Studio({ state }) {
               </>
             )}
             <points geometry={asset.dots} material={mats.dots} frustumCulled={false} />
+            {visorDots && <points geometry={visorDots} material={mats.dots} frustumCulled={false} />}
           </group>
         ) : (
           <group ref={fitRef}>

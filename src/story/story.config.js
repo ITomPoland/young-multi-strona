@@ -16,8 +16,8 @@ export const STORY_CHAPTERS = [
   { id: 'explode', vh: 75 }, // S2: charge peaks, burst, the camera catches the tile
   { id: 'single', vh: 145, anchor: 'nowa-piosenka', anchorAt: 0.15 }, // S3: bullet time + the single
   { id: 'turn', vh: 140 }, // S4: speed ramp, through the hole, 180° -> the room seen from behind
-  { id: 'albums', vh: 440, anchor: 'dyskografia', anchorAt: 0.2 }, // S5: 4 albums + LOST MEDIA
-  { id: 'reveal', vh: 260 } // S6: it was a reflection in Multi's sunglasses -> his head -> black
+  { id: 'albums', vh: 350, anchor: 'dyskografia', anchorAt: 0.2 }, // S5: 4 albums + LOST MEDIA (it ends on LOST MEDIA)
+  { id: 'reveal', vh: 420, anchor: 'o-mnie', anchorAt: 0.31 } // S6: it was a reflection in Multi's sunglasses -> his head -> "o mnie" -> black
 ];
 
 // Key moments (absolute story-vh)
@@ -123,6 +123,9 @@ export function burstClock(storyVh) {
 // Between albums the speed eases down to ~55% (a linger) but never to zero.
 // ---------------------------------------------------------------------
 export const ALBUM_COUNT = 5; // the four albums + LOST MEDIA (announced, corrupted)
+// past LOST MEDIA the tower goes on: the covers come round again (only ever seen in the
+// reveal, as the reflection in Multi's sunglasses), so the motion never stops
+export const TOWER_PANELS = 14;
 export const ORBIT_START_VH = CHAPTER_RANGES.turn[0] + (CHAPTER_RANGES.turn[1] - CHAPTER_RANGES.turn[0]) * 0.6;
 export const FIRST_ALBUM_VH = CHAPTER_RANGES.albums[0] + 30;
 export const ALBUM_STEP_VH = 80;
@@ -185,12 +188,9 @@ export function albumFocus(storyVh) {
   }
   const u = (storyVh - FIRST_ALBUM_VH) / ALBUM_STEP_VH;
   const i = Math.floor(u);
-  // past the last album (LOST MEDIA) the orbit eases to a near stop on it: that is what
-  // Multi's sunglasses reflect in the reveal (S6). It starts at the linger's speed, so no kink.
-  if (i >= ALBUM_COUNT - 1) {
-    const x = u - (ALBUM_COUNT - 1);
-    return ALBUM_COUNT - 1 + (0.55 / 1.6) * (1 - Math.exp(-x * 1.6));
-  }
+  // past the last album (LOST MEDIA) the orbit simply goes on up the tower, past the covers
+  // coming round again: the reveal (S6) starts while the world is still moving, and Multi's
+  // sunglasses keep reflecting it
   return i + linger(u - i);
 }
 
@@ -198,13 +198,48 @@ export function albumFocus(storyVh) {
 // THE REVEAL (S6): the tower was a reflection in Multi's sunglasses.
 //  switch: the screen becomes the lens (pixel-identical: the lens shows the world 1:1)
 //  -> the picture bulges like convex glass, darkens at the rim, a glint crosses it
-//  pull:   the camera pulls back off the lens (fast, then braking): glasses, face, head
+//  pull:   the camera pulls back off the lens (eases in from rest, peaks early, long brake):
+//          glasses, face, head; it starts while the picture is still bulging
 //  scan:   a laser line runs down the head; behind it the head turns into dots
 //  hold:   the head, alive (cursor) -> black at the end
 // ---------------------------------------------------------------------
 export const REVEAL = (() => {
   const [a, b] = CHAPTER_RANGES.reveal;
-  return { switch: a - 36, pull: [a + 4, a + 78], scan: [a + 70, a + 112], hold: [a + 112, b - 40], end: b };
+  // the albums chapter ends exactly on LOST MEDIA: the screen turns into the glass right there
+  return { switch: a + 4, pull: [a + 14, a + 94], scan: [a + 86, a + 128], hold: [a + 128, b - 40], end: b };
+})();
+
+// "O MNIE" (S6 hold): the scan's read-out. Absolute story-vh. The scan finishes, the name
+// decodes, then three chapters; for each, the head's dots pour into a shape about it (pad,
+// vinyl, YFL logo), and come back together as the head for the numbers at the end.
+// ABOUT.morph(vh): 0 head, 1 pad, 2 vinyl, 3 logo, 4 head again (Studio springs to it).
+export const ABOUT = (() => {
+  const h = REVEAL.hold[0];
+  const chapters = [
+    [h + 22, h + 82],
+    [h + 82, h + 142],
+    [h + 142, h + 202]
+  ];
+  const stats = [h + 196, h + 214];
+  // each change of shape: from a little before its chapter comes in, over 20 vh
+  const steps = [...chapters.map((c) => c[0]), stats[0]].map((v) => [v - 8, v + 12]);
+  return {
+    intro: [h - 14, h + 10], // "scan complete", the name decodes
+    chapters,
+    stats,
+    out: [REVEAL.end - 52, REVEAL.end - 34], // everything leaves before the black
+    morph(vh) {
+      let m = 0;
+      steps.forEach(([a, b]) => {
+        m += Math.min(Math.max((vh - a) / (b - a), 0), 1);
+      });
+      return m;
+    },
+    // the chapter on now (-1: none), for the overlay's index
+    chapterAt(vh) {
+      return chapters.findIndex(([a, b]) => vh >= a - 2 && vh < b - 2);
+    }
+  };
 })();
 
 // Local 0..1 progress of a chapter for a given story-vh value

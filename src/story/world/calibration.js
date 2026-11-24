@@ -210,6 +210,6 @@ export const TOWER = {
   z: (WALL_Z + 1.5) / 2, // centre of the room box (back wall -> front wall at z = 1.5)
   radius: 4.45, // encloses the whole room incl. the wall slab
   bottom: -14,
-  top: 26
+  top: 40 // above the last repeated panel (TOWER_PANELS)
 };
 export const TOWER_HOLE_SCALE = 1.08; // the skin's wound is a little wider than the wall's

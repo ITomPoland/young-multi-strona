@@ -1,13 +1,13 @@
 import React, { useRef, forwardRef } from 'react';
 import { motion, useScroll, useTransform, useMotionValueEvent } from 'framer-motion';
 import './NewSong.css';
-import About from '../About/About';
 import SmokeTransition from '../SmokeTransition/SmokeTransition';
 import { LEGACY_START, NEWSONG_SCROLL_VH } from './timeline';
 
 // =====================================================================
-// After the story (which ends on the album tower, S5) -> black frame.
-// This section continues from that black frame: About -> Smoke -> Merch.
+// After the story (which ends on "o mnie", S6) -> black frame.
+// This section continues from that black frame: Smoke -> Merch. (The old About section that
+// used to sit here is gone: "o mnie" lives in the story now, AboutOverlay.)
 // ---------------------------------------------------------------------
 
 const NewSong = forwardRef((props, ref) => {
@@ -35,11 +35,6 @@ const NewSong = forwardRef((props, ref) => {
   const blackVeil = useTransform(scrollYProgress, [0, 0.035], [1, 0]);
   const viewportPointerEvents = useTransform(scrollYProgress, (v) => (v > 0.02 ? 'auto' : 'none'));
 
-  // === 2. RISING STAGE (ABOUT) ===
-  const aboutEnterProgress = useTransform(contentProgress, [0.61, 0.75], [0, 1]);
-  const aboutLayerOpacity = useTransform(contentProgress, [0.605, 0.64], [0, 1]);
-  const aboutPointerEvents = useTransform(contentProgress, (v) => (v >= 0.67 ? 'auto' : 'none'));
-
   // === 3. SMOKE TRANSITION INTO MERCH ===
   const cloudProgress = useTransform(contentProgress, [0.84, 1.0], [0, 1]);
   const smokeZIndex = useTransform(contentProgress, [0, 0.79, 0.8, 1], [0, 0, 100, 100]);
@@ -59,14 +54,6 @@ const NewSong = forwardRef((props, ref) => {
     >
       <motion.div className="newsong-sticky-viewport" style={{ pointerEvents: viewportPointerEvents }}>
         <div className="newsong-stage">
-          {/* LAYER 2: RISING STAGE (ABOUT) */}
-          <motion.div
-            className="newsong-about-layer"
-            style={{ opacity: aboutLayerOpacity, pointerEvents: aboutPointerEvents, willChange: 'opacity' }}
-          >
-            <About enterProgress={aboutEnterProgress} />
-          </motion.div>
-
           {/* LAYER 3: SMOKE TRANSITION INTO MERCH */}
           <motion.div
             className="newsong-smoke-layer"

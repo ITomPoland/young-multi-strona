@@ -817,3 +817,315 @@
 .album-scene-close:focus-visible {
   background: var(--album-tint, #c2d6e0);
 }
+
+/* ---------- S6 hold: "O MNIE", the read-out of the scan ---------- */
+.story-about {
+  position: absolute;
+  inset: 0;
+  height: 100svh;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  color: #eef4f6;
+  --about-key: rgb(140, 217, 242); /* the studio's turquoise rim light */
+}
+
+/* the story, left of the head in the middle (wide screens) */
+.about-col {
+  position: absolute;
+  left: var(--pad-x);
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(30vw, 32rem);
+}
+
+.about-intro {
+  margin-bottom: clamp(1.5rem, 4svh, 3rem);
+}
+
+.about-kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.7rem, 0.85vw, 0.85rem);
+  letter-spacing: 0.22em;
+  color: rgba(228, 238, 242, 0.62);
+  margin-bottom: 1.1em;
+}
+
+.about-blink {
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--about-key);
+  box-shadow: 0 0 10px var(--about-key);
+  animation: about-blink 1.6s steps(2, start) infinite;
+}
+
+@keyframes about-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.about-realname {
+  display: block;
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.8rem, 1vw, 1rem);
+  letter-spacing: 0.32em;
+  color: rgba(228, 238, 242, 0.7);
+  margin-bottom: 0.35em;
+  white-space: pre;
+}
+
+.about-name {
+  display: block;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.8rem, min(5.6vw, 11svh), 7.5rem);
+  line-height: 0.86;
+  letter-spacing: 0.005em;
+  white-space: pre;
+}
+
+/* the chapters all sit in one place, one at a time; the numbers come in there last */
+.about-chapters {
+  position: relative;
+  min-height: clamp(14rem, 34svh, 22rem);
+}
+
+.about-chapter,
+.about-stats {
+  position: absolute;
+  inset: 0 0 auto 0;
+}
+
+.about-chapter-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  font-family: 'Antonio', sans-serif;
+  letter-spacing: 0.28em;
+  font-size: clamp(0.75rem, 0.95vw, 0.95rem);
+  color: rgba(228, 238, 242, 0.62);
+  margin-bottom: 1.2em;
+}
+
+.about-index {
+  color: var(--about-key);
+  font-variant-numeric: tabular-nums;
+}
+
+.about-rule {
+  display: inline-block;
+  width: 2.6rem;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+  align-self: center;
+}
+
+.about-chapter-title {
+  color: #eef4f6;
+}
+
+.about-meta {
+  margin-left: auto;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.18em;
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.about-text {
+  margin: 0;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: clamp(1.4rem, min(2vw, 4.2svh), 2.6rem);
+  line-height: 1.06;
+  letter-spacing: 0.005em;
+}
+
+.about-word {
+  display: inline-block;
+}
+
+.about-word.is-key {
+  color: var(--about-key);
+}
+
+.about-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1rem, 3svh, 2rem) 2rem;
+}
+
+.about-stat {
+  border-top: 1px solid rgba(228, 238, 242, 0.18);
+  padding-top: 0.8rem;
+}
+
+.about-stat-n {
+  display: block;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.2rem, min(3.6vw, 8svh), 4.6rem);
+  line-height: 0.9;
+  white-space: pre;
+}
+
+.about-stat-label {
+  display: block;
+  margin-top: 0.5em;
+  font-family: 'Antonio', sans-serif;
+  letter-spacing: 0.26em;
+  font-size: clamp(0.7rem, 0.85vw, 0.85rem);
+  color: rgba(228, 238, 242, 0.62);
+}
+
+.about-next {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0.4rem 0 0;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.2em;
+  font-size: clamp(0.7rem, 0.85vw, 0.85rem);
+  color: var(--about-key);
+}
+
+/* the index, right of the head (wide screens) */
+.about-hud {
+  position: absolute;
+  right: var(--pad-x);
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(22vw, 20rem);
+  font-family: 'Antonio', sans-serif;
+  letter-spacing: 0.26em;
+  font-size: clamp(0.72rem, 0.9vw, 0.95rem);
+  color: rgba(228, 238, 242, 0.62);
+}
+
+.about-hud-head {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid rgba(228, 238, 242, 0.18);
+}
+
+.about-hud-count {
+  font-variant-numeric: tabular-nums;
+  color: #eef4f6;
+}
+
+.about-hud-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.about-hud-item {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.95rem 0;
+  border-bottom: 1px solid rgba(228, 238, 242, 0.08);
+  opacity: 0.38;
+  transition: opacity 0.5s ease, color 0.5s ease;
+}
+
+.about-hud-item.is-past {
+  opacity: 0.55;
+}
+
+.about-hud-item.is-on {
+  opacity: 1;
+  color: #eef4f6;
+}
+
+.about-hud-index {
+  font-variant-numeric: tabular-nums;
+}
+
+.about-hud-item.is-on .about-hud-index {
+  color: var(--about-key);
+}
+
+.about-hud-bar {
+  width: 0.9rem;
+  height: 1px;
+  background: currentColor;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.about-hud-item.is-on .about-hud-bar {
+  width: 2.6rem;
+  background: var(--about-key);
+}
+
+.about-hud-form {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 1.4rem;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.2em;
+}
+
+.about-hud-form-value {
+  color: var(--about-key);
+  animation: about-form-in 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes about-form-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.6em);
+    letter-spacing: 0.6em;
+  }
+}
+
+/* phones / tall screens: the head is up top, the read-out below it */
+@media (max-width: 767px), (max-aspect-ratio: 1/1) {
+  .about-col {
+    left: var(--pad-x);
+    right: var(--pad-x);
+    top: auto;
+    bottom: calc(var(--bottom) + 0.5rem);
+    transform: none;
+    max-width: none;
+  }
+
+  .about-intro {
+    margin-bottom: 1rem;
+  }
+
+  .about-name {
+    font-size: clamp(2.6rem, 13vw, 4.5rem);
+  }
+
+  .about-chapters {
+    min-height: 13.5rem;
+  }
+
+  .about-text {
+    font-size: clamp(1.25rem, 6.2vw, 2rem);
+  }
+
+  .about-meta,
+  .about-hud {
+    display: none;
+  }
+
+  .about-col {
+    width: auto;
+  }
+
+  .about-stat-n {
+    font-size: clamp(2rem, 10vw, 3rem);
+  }
+}

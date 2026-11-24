@@ -14,10 +14,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 // In dev it can be tuned live: window.__headFit (then call window.__applyHeadFit()).
 // =====================================================================
 
-// Measured on the Meshy model (scratch analysis of its front-facing surface): its visor spans
-// y 0.06..0.36 (centre 0.21) with its front at z ~0.72, lips just below, chin ~-0.25.
-// Scale 0.25 gives a real-size head (dread tips to chin ~27 cm) and a ~7.5 cm tall visor;
-// the offset puts the model's visor 3 mm behind the code-built shield (SHIELD in headParts).
+// Measured on the Meshy model: its visor spans y ~0.0..0.33 with its front at z ~0.72, lips
+// just below, chin ~-0.25. Scale 0.25 gives a real-size head (dread tips to chin ~27 cm, a
+// ~9 cm tall shield). The glass is part of the model's file (MultiVisor), so it fits by itself.
 export const HEAD_FIT = {
   scale: 0.25, // model units -> metres
   position: [0, 0.008 - 0.25 * 0.21, 0.115 - 0.25 * 0.72], // metres, after scaling
@@ -26,9 +25,10 @@ export const HEAD_FIT = {
 
 // The photo's projection onto the head (head space: metres, eyes at EYE_Y, face to +Z):
 // photo pixel = (cx + x * k, cy - (y - EYE_Y) * k), orthographic along -Z (a long lens).
-// Calibrated on the visor: in the 2400 px photo it runs y 477..890 (centre 684, 413 px) and
-// is ~7.5 cm tall on the fitted model -> k ~ 5500 px/m; the face's centre line is x ~1190.
-export const PHOTO_FIT = { cx: 1190, cy: 684, k: 5500, size: 2400 };
+// The model was generated from this portrait (2000 px) and lines up with it seen from the front:
+// model (x, y) -> (914 + 1580 x, 1107 - 1580 y) (scripts/prepare-head.mjs, PHOTO_REG), so with
+// HEAD_FIT (scale 0.25, y offset -0.0445): k = 1580 / 0.25, cy = 1107 - (0.0445 + EYE_Y) k.
+export const PHOTO_FIT = { cx: 914, cy: 775, k: 6320, size: 2000 };
 
 function parseDots(buf) {
   const view = new DataView(buf);

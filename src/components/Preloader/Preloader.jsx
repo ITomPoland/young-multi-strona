@@ -4,7 +4,7 @@ import './Preloader.css';
 import logoWhite from '../../assets/logoyflbiale.avif';
 import { usePerformance } from '../../context/PerformanceContext';
 import useFpsMonitor from '../../hooks/useFpsMonitor';
-import { whenStoryReady } from '../../story/storyReady';
+import { whenStoryReady, whenStoryWarm } from '../../story/storyReady';
 
 // MINIMALIST LUXURY VARIANT
 const containerVariants = {
@@ -67,10 +67,12 @@ function Preloader({ onComplete }) {
 
       startMonitoring();
 
+      // (the last few percent wait for the GPU warm-up: shaders + models of the whole story)
+      let warmed = false;
       progressInterval = setInterval(() => {
         if (isCancelled) return;
         const elapsed = Date.now() - start;
-        const p = Math.min((elapsed / duration) * 100, 100);
+        const p = Math.min((elapsed / duration) * 100, warmed ? 100 : 94);
         setProgress(p);
         if (p >= 100) clearInterval(progressInterval);
       }, 30);
@@ -80,7 +82,11 @@ function Preloader({ onComplete }) {
       await Promise.all([
         document.fonts.ready,
         new Promise((resolve) => setTimeout(resolve, duration)),
-        whenStoryReady()
+        whenStoryReady(),
+        // every shader compiled, every model / texture uploaded: no stall on the first scroll
+        whenStoryWarm().then(() => {
+          warmed = true;
+        })
       ]);
 
       if (isCancelled) return;

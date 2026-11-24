@@ -80,7 +80,10 @@ export default function StoryDirector({ storyVh, state }) {
     const vh = storyVh.get();
     // scroll velocity (vh / s), smoothed: drives the secondary motion out at the tower
     const dts = Math.min(Math.max(dt, 1 / 240), 0.1);
-    const rawVel = s.vh === undefined ? 0 : THREE.MathUtils.clamp((vh - s.vh) / dts, -600, 600);
+    // a stalled frame (a hitch: the scroll ran on meanwhile) is not a burst of speed: it would
+    // flash the speed effects (wider lens, glitching covers) for nothing
+    const stalled = dt > 0.1;
+    const rawVel = s.vh === undefined || stalled ? s.vel ?? 0 : THREE.MathUtils.clamp((vh - s.vh) / dts, -600, 600);
     s.vel = (s.vel ?? 0) + (rawVel - (s.vel ?? 0)) * (1 - Math.exp(-dts * 7));
     s.vh = vh;
     const time = frame.clock.elapsedTime;
@@ -241,10 +244,14 @@ export default function StoryDirector({ storyVh, state }) {
     s.camPos.copy(camera.position);
 
     // --- the reveal (S6): the studio takes the screen over at REVEAL.switch (see Studio.jsx) ---
-    s.studioOn = vh >= REVEAL.switch;
-    s.revBulge = smooth(REVEAL.switch, REVEAL.pull[0] + 2, vh); // the picture turns into glass
+    // ...and gives it back (scrolling up) only once the studio camera has really come back
+    // onto the glass: it follows the scroll on a spring, so it lags; handing back while it is
+    // still out would cut from the head straight to the tower
+    s.studioOn = vh >= REVEAL.switch || (s.studioOn && (s.studioU ?? 0) > 0.0015);
+    s.revBulge = smooth(REVEAL.switch, REVEAL.pull[0] + 16, vh); // the picture turns into glass
     const pullT = clamp01((vh - REVEAL.pull[0]) / (REVEAL.pull[1] - REVEAL.pull[0]));
-    s.revPull = 1 - Math.pow(2, -9 * pullT) * (1 - pullT); // expo-out: very fast start, long brake
+    // from rest (no kick), fastest a third of the way, then a long brake: 1 - (1-t)^3 (1+3t)
+    s.revPull = 1 - Math.pow(1 - pullT, 3) * (1 + 3 * pullT);
     s.revScan = smooth(REVEAL.scan[0], REVEAL.scan[1], vh);
     s.revHold = smooth(REVEAL.hold[0] - 10, REVEAL.hold[0] + 10, vh);
 

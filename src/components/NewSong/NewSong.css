@@ -22,12 +22,6 @@
   inset: 0;
 }
 
-.newsong-about-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-}
-
 .newsong-smoke-layer {
   position: absolute;
   inset: 0;

@@ -74,7 +74,7 @@ function useSlotTracking(slotRef, state) {
   }, [slotRef, state]);
 }
 
-export default function StoryCanvas({ storyVh, state, slotRef, tier = 'high' }) {
+function StoryCanvas({ storyVh, state, slotRef, tier = 'high' }) {
   const wrapRef = useRef(null);
   ensureThreeState(state.current);
   useSlotTracking(slotRef, state);
@@ -118,3 +118,7 @@ export default function StoryCanvas({ storyVh, state, slotRef, tier = 'high' }) 
     </div>
   );
 }
+
+// its props never change (a motion value, refs, the tier): the page's own state changes (the
+// mini-player, the overlays) need not re-render the whole 3D scene
+export default React.memo(StoryCanvas);

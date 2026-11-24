@@ -3,6 +3,53 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { FULLSCREEN_VERT, TRAIL_FRAG, COMPOSITE_FRAG, DUST_VERT, DUST_FRAG } from './hero/heroShaders';
 import { isTextFront, renderTypographyCanvas } from './hero/typography';
+import { markStoryWarm } from './storyReady';
+
+const _proj = new THREE.Matrix4();
+
+// THE WARM-UP: every shader of both scenes compiled (hidden objects too: the tower before the
+// turn, the studio before the reveal) and every texture / model uploaded, off-screen, into a
+// target of the same type as the real ones (so the programs match). Hidden objects are shown
+// only for the synchronous part (no real frame ever sees them).
+const _warmCam = new THREE.PerspectiveCamera(30, 1, 0.01, 10);
+_warmCam.position.set(0, 0, 0.6);
+_warmCam.lookAt(0, 0, 0);
+_warmCam.updateMatrixWorld();
+function showHidden(scene, into) {
+  scene.traverse((o) => {
+    if (!o.visible) {
+      o.visible = true;
+      into.push(o);
+    }
+  });
+  return into;
+}
+async function warmUp(gl, scene, camera, studio, dustScene) {
+  const rt = new THREE.WebGLRenderTarget(64, 64, { type: THREE.HalfFloatType });
+  const prev = gl.getRenderTarget();
+  let hidden = showHidden(studio, showHidden(scene, []));
+  gl.setRenderTarget(rt);
+  const compiling = Promise.all([
+    gl.compileAsync(scene, camera),
+    gl.compileAsync(studio, _warmCam),
+    gl.compileAsync(dustScene, camera) // the hero's flying dust (its own pass, first scroll)
+  ]);
+  gl.setRenderTarget(prev);
+  hidden.forEach((o) => (o.visible = false));
+  try {
+    await compiling;
+  } catch {
+    /* compiled synchronously on the first draw below */
+  }
+  hidden = showHidden(studio, showHidden(scene, []));
+  gl.setRenderTarget(rt);
+  gl.render(scene, camera);
+  gl.render(studio, _warmCam);
+  gl.render(dustScene, camera);
+  gl.setRenderTarget(prev);
+  hidden.forEach((o) => (o.visible = false));
+  rt.dispose();
+}
 
 // =====================================================================
 // The ONE render pipeline of the story, from the first frame of the hero to the end:
@@ -161,7 +208,7 @@ export default function Compositor({ state, glow = true }) {
         uDpr: { value: 1 },
         uTime: { value: 0 },
         uBlack: { value: 0 },
-        uGlowTaps: { value: glow ? 1 : 0 },
+        uGlowTaps: { value: 1 }, // (set every frame from `glow`: see below)
         uTr: { value: 0 },
         uHero: { value: 1 },
         uTrailAmt: { value: 1 },
@@ -205,7 +252,9 @@ export default function Compositor({ state, glow = true }) {
     dustWall.visible = false;
 
     return { quadGeo, orthoCam, trailMat, trailScene, compMat, compScene, dustGeo, dustUniforms, dustOverlay, dustScene, dustWall };
-  }, [targets, media, glow]);
+    // NOT on `glow`: the quality tier is settled as the preloader ends, and rebuilding the passes
+    // then would drop their warmed-up programs (recompiled on the first scroll)
+  }, [targets, media]);
 
   // the settled dust lives in the 3D world, on the wall
   useEffect(() => {
@@ -318,6 +367,8 @@ export default function Compositor({ state, glow = true }) {
   const buf = useMemo(() => new THREE.Vector2(), []);
   const trailState = useRef({ read: null, write: null });
   const textReveal = useRef(0);
+  const worldWarm = useRef(false);
+  const warm = useRef({ done: 0, busy: false });
 
   useFrame((frame) => {
     const s = state.current;
@@ -328,6 +379,12 @@ export default function Compositor({ state, glow = true }) {
       targets.sceneRT.setSize(buf.x, buf.y);
       targets.dustRT.setSize(buf.x, buf.y);
       targets.worldRT.setSize(buf.x, buf.y);
+      // allocated now, not on their first use (the dust's first scroll, the reveal)
+      for (const rt of [targets.dustRT, targets.worldRT]) {
+        gl.setRenderTarget(rt);
+        gl.clear(true, true, true);
+      }
+      gl.setRenderTarget(null);
     }
 
     const tr = s.tr;
@@ -391,14 +448,49 @@ export default function Compositor({ state, glow = true }) {
     du.uDpr.value = dpr;
     passes.dustWall.visible = dustOn;
 
+    // --- the warm-up (once the studio is complete; again if it changes) ---
+    const W = warm.current;
+    if (s.studio && s.studioPrep && W.done !== s.studioPrep && !W.busy) {
+      W.busy = true;
+      const ver = s.studioPrep;
+      warmUp(gl, scene, camera, s.studio.scene, passes.dustScene).finally(() => {
+        W.busy = false;
+        W.done = ver;
+        markStoryWarm();
+      });
+    }
+
     // --- 2. the world (from the reveal on: into the lens, and the studio onto the screen) ---
     const studio = s.studioOn && s.studio;
+    // the lens's target is first bound long before the seam (its framebuffer allocated then)
+    if (!worldWarm.current && s.studio) {
+      worldWarm.current = true;
+      gl.setRenderTarget(targets.worldRT);
+      gl.clear(true, true, true);
+    }
     // once the world has faded out of the glass, it is not drawn at all
     if (!studio || (s.lensWorld ?? 1) > 0.001) {
       gl.setRenderTarget(studio ? targets.worldRT : targets.sceneRT);
       gl.setClearColor(0x000000, 1);
       gl.clear(true, true, true);
+      // in the lens the world texture holds only the part of the world on the visible glass
+      // (Studio sets lensRect: centre + half size in the world camera's NDC): the same off-axis
+      // frustum, re-cut to that rect
+      const rect = studio ? s.lensRect : null;
+      if (rect) {
+        _proj.copy(camera.projectionMatrix);
+        const e = camera.projectionMatrix.elements;
+        e[0] /= rect[2];
+        e[8] = (e[8] + rect[0]) / rect[2];
+        e[5] /= rect[3];
+        e[9] = (e[9] + rect[1]) / rect[3];
+        camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+      }
       gl.render(scene, camera);
+      if (rect) {
+        camera.projectionMatrix.copy(_proj);
+        camera.projectionMatrixInverse.copy(_proj).invert();
+      }
     }
     if (studio) {
       gl.setRenderTarget(targets.sceneRT);
@@ -421,6 +513,7 @@ export default function Compositor({ state, glow = true }) {
     u.uDpr.value = dpr;
     u.uTime.value = time;
     u.uBlack.value = s.black;
+    u.uGlowTaps.value = glow ? 1 : 0;
     u.uTr.value = tr;
     u.uHero.value = heroOn ? 1 : 0;
     u.uTrailAmt.value = 1 - THREE.MathUtils.smoothstep(tr, 0.42, 0.5);

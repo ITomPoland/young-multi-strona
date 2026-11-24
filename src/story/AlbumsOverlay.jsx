@@ -29,7 +29,8 @@ export default function AlbumsOverlay({ storyVh, state }) {
   const opacity = useTransform(
     storyVh,
     // gone before the screen turns into the glass of the reveal
-    [FIRST_ALBUM_VH - 26, FIRST_ALBUM_VH - 8, REVEAL.switch - 30, REVEAL.switch - 8],
+    // LOST MEDIA's title stays until the camera starts pulling back off the glass
+    [FIRST_ALBUM_VH - 26, FIRST_ALBUM_VH - 8, REVEAL.pull[0] - 6, REVEAL.pull[0] + 6],
     [0, 1, 1, 0]
   );
   const album = focus >= 0 ? ALBUMS[focus] : null;

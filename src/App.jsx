@@ -13,11 +13,9 @@ import SmoothScroll from './components/SmoothScroll/SmoothScroll';
 import FanBanner from './components/FanBanner/FanBanner';
 // import NoiseOverlay from './components/NoiseOverlay/NoiseOverlay'; // DISABLED
 import useAdaptiveFavicon from './hooks/useAdaptiveFavicon';
-import head1Img from './assets/head1.avif'; // Explicit import for preload
 import StorySection from './story/StorySection';
-import { useStoryVh, storyVhToScroll, viewportMetrics } from './story/useStoryScroll';
+import { useStoryVh, storyVhToScroll } from './story/useStoryScroll';
 import { anchorVh } from './story/story.config';
-import { legacyToLocal } from './components/NewSong/timeline';
 
 // Lazy-loaded components - load when needed (below the fold)
 const NewSong = lazy(() => import('./components/NewSong/NewSong'));
@@ -82,13 +80,7 @@ function HomePage() {
       return;
     }
 
-    // Chapters inside the story / discography are addressed by their timeline position
-    const vhPx = viewportMetrics.vhPx;
-    const newSongPos = (localProgress) => {
-      const el = newSongRef.current;
-      if (!el) return 0;
-      return el.offsetTop + (el.offsetHeight - vhPx * 100) * localProgress;
-    };
+    // Chapters inside the story are addressed by their timeline position (story.config anchors)
 
     let scrollPosition = 0;
     switch (sectionId) {
@@ -99,7 +91,7 @@ function HomePage() {
         scrollPosition = storyVhToScroll(anchorVh('dyskografia'));
         break;
       case 'o-mnie':
-        scrollPosition = newSongPos(legacyToLocal(0.76));
+        scrollPosition = storyVhToScroll(anchorVh('o-mnie'));
         break;
       case 'merch':
         scrollPosition = merchRef.current ? merchRef.current.offsetTop : 0;
@@ -123,16 +115,7 @@ function HomePage() {
     import('./components/Merch/Merch');
     import('./components/Contact/Contact');
 
-    // 2. Heavy Assets Preload
-    const preloadImage = (src) => {
-      const img = new Image();
-      img.src = src;
-    };
-
-    // Preload About Head
-    preloadImage(head1Img);
-
-    // Defer heavy video preload and skip on mobile (where SmokeTransition uses a CSS curtain)
+    // 2. Heavy assets: defer the heavy video preload and skip on mobile (where SmokeTransition uses a CSS curtain)
     let videoTimer;
     if (window.innerWidth >= 768) {
       videoTimer = setTimeout(() => {
