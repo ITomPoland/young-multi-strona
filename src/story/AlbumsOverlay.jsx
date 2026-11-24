@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useMotionValueEvent, useTransform } from 'framer-motion';
 import { ALBUMS } from '../data/albums';
-import { CHAPTER_RANGES, FIRST_ALBUM_VH, albumFocus } from './story.config';
+import { FIRST_ALBUM_VH, REVEAL, albumFocus } from './story.config';
 import { requestOpen, requestClose } from './sceneState';
 import { lockScroll, unlockScroll } from '../lib/scrollLock';
 import AlbumScene from './AlbumScene';
@@ -12,7 +12,6 @@ import { cssColor } from './world/albumColor';
 // the frame, or its button) opens its scene: the 3D cover flies onto the view and becomes
 // the backdrop (Tower + sceneState.js), the tracklist barrel comes in (AlbumScene).
 export default function AlbumsOverlay({ storyVh, state }) {
-  const [, albumsEnd] = CHAPTER_RANGES.albums;
   const [focus, setFocus] = useState(-1);
   const [open, setOpen] = useState(-1);
   const openVh = useRef(0);
@@ -29,7 +28,8 @@ export default function AlbumsOverlay({ storyVh, state }) {
 
   const opacity = useTransform(
     storyVh,
-    [FIRST_ALBUM_VH - 26, FIRST_ALBUM_VH - 8, albumsEnd - 44, albumsEnd - 26],
+    // gone before the screen turns into the glass of the reveal
+    [FIRST_ALBUM_VH - 26, FIRST_ALBUM_VH - 8, REVEAL.switch - 30, REVEAL.switch - 8],
     [0, 1, 1, 0]
   );
   const album = focus >= 0 ? ALBUMS[focus] : null;

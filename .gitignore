@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Third-party photos used while building (rights not cleared for publishing yet)
+public/studio/
+art/

@@ -16,7 +16,8 @@ export const STORY_CHAPTERS = [
   { id: 'explode', vh: 75 }, // S2: charge peaks, burst, the camera catches the tile
   { id: 'single', vh: 145, anchor: 'nowa-piosenka', anchorAt: 0.15 }, // S3: bullet time + the single
   { id: 'turn', vh: 140 }, // S4: speed ramp, through the hole, 180° -> the room seen from behind
-  { id: 'albums', vh: 440, anchor: 'dyskografia', anchorAt: 0.2 } // S5: 4 albums + LOST MEDIA -> black
+  { id: 'albums', vh: 440, anchor: 'dyskografia', anchorAt: 0.2 }, // S5: 4 albums + LOST MEDIA
+  { id: 'reveal', vh: 260 } // S6: it was a reflection in Multi's sunglasses -> his head -> black
 ];
 
 // Key moments (absolute story-vh)
@@ -184,9 +185,27 @@ export function albumFocus(storyVh) {
   }
   const u = (storyVh - FIRST_ALBUM_VH) / ALBUM_STEP_VH;
   const i = Math.floor(u);
-  if (i >= ALBUM_COUNT - 1) return ALBUM_COUNT - 1 + (u - (ALBUM_COUNT - 1)) * 0.55; // keeps flying
+  // past the last album (LOST MEDIA) the orbit eases to a near stop on it: that is what
+  // Multi's sunglasses reflect in the reveal (S6). It starts at the linger's speed, so no kink.
+  if (i >= ALBUM_COUNT - 1) {
+    const x = u - (ALBUM_COUNT - 1);
+    return ALBUM_COUNT - 1 + (0.55 / 1.6) * (1 - Math.exp(-x * 1.6));
+  }
   return i + linger(u - i);
 }
+
+// ---------------------------------------------------------------------
+// THE REVEAL (S6): the tower was a reflection in Multi's sunglasses.
+//  switch: the screen becomes the lens (pixel-identical: the lens shows the world 1:1)
+//  -> the picture bulges like convex glass, darkens at the rim, a glint crosses it
+//  pull:   the camera pulls back off the lens (fast, then braking): glasses, face, head
+//  scan:   a laser line runs down the head; behind it the head turns into dots
+//  hold:   the head, alive (cursor) -> black at the end
+// ---------------------------------------------------------------------
+export const REVEAL = (() => {
+  const [a, b] = CHAPTER_RANGES.reveal;
+  return { switch: a - 36, pull: [a + 4, a + 78], scan: [a + 70, a + 112], hold: [a + 112, b - 40], end: b };
+})();
 
 // Local 0..1 progress of a chapter for a given story-vh value
 export function chapterProgress(id, storyVh) {

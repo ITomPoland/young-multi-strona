@@ -8,6 +8,8 @@ import { isTextFront, renderTypographyCanvas } from './hero/typography';
 // The ONE render pipeline of the story, from the first frame of the hero to the end:
 //  1. mouse trail (ping-pong, hero only)
 //  2. the 3D world -> HDR target (incl. the settled dust, as part of the wall)
+//     from the reveal on (S6): the world -> its own target (the reflection in the lens),
+//     and the studio (Multi's head, the glasses) -> the HDR target instead
 //  3. the flying dust -> its own target (hero only)
 //  4. composite: Bayer dither of the room + the hero layers + glow + film -> screen
 // =====================================================================
@@ -89,8 +91,20 @@ export default function Compositor({ state, glow = true }) {
     const trailInit = new THREE.DataTexture(init, TRAIL_SIZE, TRAIL_SIZE);
     rawTexture(trailInit);
     trailInit.needsUpdate = true;
-    return { sceneRT, dustRT, trailA, trailB, trailInit };
+    // the world as seen in Multi's sunglasses (S6)
+    const worldRT = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.HalfFloatType,
+      depthBuffer: true,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter
+    });
+    return { sceneRT, dustRT, trailA, trailB, trailInit, worldRT };
   }, []);
+
+  // the studio's lens samples this
+  useEffect(() => {
+    state.current.worldTex = targets.worldRT.texture;
+  }, [state, targets]);
 
   // ---------- media: stacked video (Multi + matte), poster, typography ----------
   const media = useMemo(
@@ -288,6 +302,7 @@ export default function Compositor({ state, glow = true }) {
       targets.trailA.dispose();
       targets.trailB.dispose();
       targets.trailInit.dispose();
+      targets.worldRT.dispose();
       passes.trailMat.dispose();
       passes.compMat.dispose();
       passes.dustOverlay.material.dispose();
@@ -312,6 +327,7 @@ export default function Compositor({ state, glow = true }) {
     if (targets.sceneRT.width !== buf.x || targets.sceneRT.height !== buf.y) {
       targets.sceneRT.setSize(buf.x, buf.y);
       targets.dustRT.setSize(buf.x, buf.y);
+      targets.worldRT.setSize(buf.x, buf.y);
     }
 
     const tr = s.tr;
@@ -375,11 +391,20 @@ export default function Compositor({ state, glow = true }) {
     du.uDpr.value = dpr;
     passes.dustWall.visible = dustOn;
 
-    // --- 2. the world ---
-    gl.setRenderTarget(targets.sceneRT);
-    gl.setClearColor(0x000000, 1);
-    gl.clear(true, true, true);
-    gl.render(scene, camera);
+    // --- 2. the world (from the reveal on: into the lens, and the studio onto the screen) ---
+    const studio = s.studioOn && s.studio;
+    // once the world has faded out of the glass, it is not drawn at all
+    if (!studio || (s.lensWorld ?? 1) > 0.001) {
+      gl.setRenderTarget(studio ? targets.worldRT : targets.sceneRT);
+      gl.setClearColor(0x000000, 1);
+      gl.clear(true, true, true);
+      gl.render(scene, camera);
+    }
+    if (studio) {
+      gl.setRenderTarget(targets.sceneRT);
+      gl.clear(true, true, true);
+      gl.render(s.studio.scene, s.studio.camera);
+    }
 
     // --- 3. flying dust ---
     if (dustOn) {

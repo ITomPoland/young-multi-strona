@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock, albumFocus, ALBUM_SPACING, ALBUM_RISE, ORBIT_START_VH, whipEase, spinCarry, towerPull } from './story.config';
+import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock, albumFocus, ALBUM_SPACING, ALBUM_RISE, ORBIT_START_VH, whipEase, spinCarry, towerPull, REVEAL } from './story.config';
 import { PHOTO, TOWER } from './world/calibration';
 import { REST_SIZE, heroTileAt } from './storyThree';
 
@@ -88,10 +88,9 @@ export default function StoryDirector({ storyVh, state }) {
     const B = BEATS.burst;
     const CAUGHT = BEATS.caught;
     const [turnStart] = CHAPTER_RANGES.turn;
-    const [, albumsEnd] = CHAPTER_RANGES.albums;
 
     // one canvas from the hero to the end of the story
-    s.active = vh <= albumsEnd + 2;
+    s.active = vh <= REVEAL.end + 2;
     s.tr = heroTr(vh);
     const d = chapterProgress('turn', vh);
     s.single = chapterProgress('single', vh);
@@ -241,8 +240,16 @@ export default function StoryDirector({ storyVh, state }) {
     camera.updateMatrixWorld();
     s.camPos.copy(camera.position);
 
+    // --- the reveal (S6): the studio takes the screen over at REVEAL.switch (see Studio.jsx) ---
+    s.studioOn = vh >= REVEAL.switch;
+    s.revBulge = smooth(REVEAL.switch, REVEAL.pull[0] + 2, vh); // the picture turns into glass
+    const pullT = clamp01((vh - REVEAL.pull[0]) / (REVEAL.pull[1] - REVEAL.pull[0]));
+    s.revPull = 1 - Math.pow(2, -9 * pullT) * (1 - pullT); // expo-out: very fast start, long brake
+    s.revScan = smooth(REVEAL.scan[0], REVEAL.scan[1], vh);
+    s.revHold = smooth(REVEAL.hold[0] - 10, REVEAL.hold[0] + 10, vh);
+
     // black at the very end, where the next section takes over
-    s.black = smooth(albumsEnd - 34, albumsEnd - 4, vh);
+    s.black = smooth(REVEAL.end - 34, REVEAL.end - 4, vh);
 
     // --- the tile's print burns in while it tumbles toward us ---
     const e = easeOutCubic(clamp01((vh - (B + 3)) / (CAUGHT - (B + 3))));
