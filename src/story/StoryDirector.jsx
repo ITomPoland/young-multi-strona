@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock, albumFocus, ALBUM_SPACING, ALBUM_RISE, ORBIT_START_VH, whipEase, spinCarry, towerPull, REVEAL } from './story.config';
+import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock, albumFocus, ALBUM_SPACING, ALBUM_RISE, ORBIT_START_VH, whipEase, spinCarry, towerPull, REVEAL, MERCH } from './story.config';
 import { PHOTO, TOWER } from './world/calibration';
 import { REST_SIZE, heroTileAt } from './storyThree';
 
@@ -92,8 +92,8 @@ export default function StoryDirector({ storyVh, state }) {
     const CAUGHT = BEATS.caught;
     const [turnStart] = CHAPTER_RANGES.turn;
 
-    // one canvas from the hero to the end of the story
-    s.active = vh <= REVEAL.end + 2;
+    // one canvas from the hero to the end of the story (S0..S7)
+    s.active = vh <= MERCH.end + 2;
     s.tr = heroTr(vh);
     const d = chapterProgress('turn', vh);
     s.single = chapterProgress('single', vh);
@@ -255,8 +255,14 @@ export default function StoryDirector({ storyVh, state }) {
     s.revScan = smooth(REVEAL.scan[0], REVEAL.scan[1], vh);
     s.revHold = smooth(REVEAL.hold[0] - 10, REVEAL.hold[0] + 10, vh);
 
-    // black at the very end, where the next section takes over
-    s.black = smooth(REVEAL.end - 34, REVEAL.end - 4, vh);
+    // --- S7: Selected Goods (YFL -> solid LOST MEDIA Collector's Box -> exploded view -> 4 archival drops) ---
+    s.boxMorph = smooth(MERCH.morphToBox[0], MERCH.morphToBox[1], vh);
+    s.boxScan = smooth(MERCH.materialize[0], MERCH.materialize[1], vh);
+    s.boxExplode = smooth(MERCH.explode[0], MERCH.explode[1], vh);
+    s.merchFocus = MERCH.focus(vh);
+
+    // black at the very end of S7, seamlessly handing off to Contact's dark ink circle
+    s.black = smooth(MERCH.black[0], MERCH.black[1], vh);
 
     // --- the tile's print burns in while it tumbles toward us ---
     const e = easeOutCubic(clamp01((vh - (B + 3)) / (CAUGHT - (B + 3))));

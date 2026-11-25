@@ -18,8 +18,6 @@ import { useStoryVh, storyVhToScroll } from './story/useStoryScroll';
 import { anchorVh } from './story/story.config';
 
 // Lazy-loaded components - load when needed (below the fold)
-const NewSong = lazy(() => import('./components/NewSong/NewSong'));
-const Merch = lazy(() => import('./components/Merch/Merch'));
 const Contact = lazy(() => import('./components/Contact/Contact'));
 const NotFound = lazy(() => import('./components/NotFound/NotFound'));
 
@@ -56,8 +54,6 @@ function HomePage() {
   // === SECTION REFS FOR DYNAMIC NAVIGATION ===
   const heroRef = useRef(null);
   const storyRef = useRef(null);
-  const newSongRef = useRef(null);
-  const merchRef = useRef(null);
   const contactRef = useRef(null);
 
   const openMenu = useCallback(() => setIsMenuOpen(true), []);
@@ -94,7 +90,7 @@ function HomePage() {
         scrollPosition = storyVhToScroll(anchorVh('o-mnie'));
         break;
       case 'merch':
-        scrollPosition = merchRef.current ? merchRef.current.offsetTop : 0;
+        scrollPosition = storyVhToScroll(anchorVh('merch'));
         break;
       default:
         scrollPosition = 0;
@@ -109,26 +105,9 @@ function HomePage() {
 
   // === ASSET PRELOADING ===
   React.useEffect(() => {
-    // 1. Code Splitting Preload
-    import('./components/NewSong/NewSong');
+    // Code Splitting Preload
     import('./story/StoryCanvas');
-    import('./components/Merch/Merch');
     import('./components/Contact/Contact');
-
-    // 2. Heavy assets: defer the heavy video preload and skip on mobile (where SmokeTransition uses a CSS curtain)
-    let videoTimer;
-    if (window.innerWidth >= 768) {
-      videoTimer = setTimeout(() => {
-        const video = document.createElement('video');
-        video.src = '/smoke-transition.mp4';
-        video.preload = 'metadata';
-        video.load();
-      }, 2000);
-    }
-
-    return () => {
-      if (videoTimer) clearTimeout(videoTimer);
-    };
   }, []);
 
   const handlePreloaderComplete = useCallback(() => {
@@ -169,8 +148,6 @@ function HomePage() {
           <Hero ref={heroRef} />
           <StorySection ref={storyRef} storyVh={storyVh} startAnimation={!isLoading} />
           <Suspense fallback={null}>
-            <NewSong ref={newSongRef} isMenuOpen={isMenuOpen} />
-            <Merch ref={merchRef} />
             <Contact ref={contactRef} />
           </Suspense>
         </main>

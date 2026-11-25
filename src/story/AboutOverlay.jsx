@@ -215,7 +215,7 @@ export default function AboutOverlay({ storyVh }) {
         <div className="about-hud-form">
           <span className="about-hud-form-label">FORMA</span>
           <span key={active + (done ? 9 : 0)} className="about-hud-form-value">
-            {active >= 0 ? CHAPTERS[active].form : 'MICHAŁ'}
+            {active >= 0 ? CHAPTERS[active].form : done ? 'YFL' : 'MICHAŁ'}
           </span>
         </div>
       </motion.aside>

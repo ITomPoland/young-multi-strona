@@ -17,7 +17,8 @@ export const STORY_CHAPTERS = [
   { id: 'single', vh: 145, anchor: 'nowa-piosenka', anchorAt: 0.15 }, // S3: bullet time + the single
   { id: 'turn', vh: 140 }, // S4: speed ramp, through the hole, 180° -> the room seen from behind
   { id: 'albums', vh: 350, anchor: 'dyskografia', anchorAt: 0.2 }, // S5: 4 albums + LOST MEDIA (it ends on LOST MEDIA)
-  { id: 'reveal', vh: 420, anchor: 'o-mnie', anchorAt: 0.31 } // S6: it was a reflection in Multi's sunglasses -> his head -> "o mnie" -> black
+  { id: 'reveal', vh: 330, anchor: 'o-mnie', anchorAt: 0.36 }, // S6: sunglasses reflection -> Multi's head -> "o mnie"
+  { id: 'merch', vh: 415, anchor: 'merch', anchorAt: 0.18 } // S7: YFL -> solid LOST MEDIA Box -> Exploded View -> Selected Goods
 ];
 
 // Key moments (absolute story-vh)
@@ -206,28 +207,61 @@ export function albumFocus(storyVh) {
 export const REVEAL = (() => {
   const [a, b] = CHAPTER_RANGES.reveal;
   // the albums chapter ends exactly on LOST MEDIA: the screen turns into the glass right there
-  return { switch: a + 4, pull: [a + 14, a + 94], scan: [a + 86, a + 128], hold: [a + 128, b - 40], end: b };
+  return { switch: a + 4, pull: [a + 14, a + 88], scan: [a + 80, a + 116], hold: [a + 116, b - 14], end: b };
 })();
 
-// "O MNIE" (S6 hold): the scan's read-out. Absolute story-vh. The scan finishes, the name
-// decodes, then three chapters; for each, the head's dots pour into a shape about it (pad,
-// vinyl, YFL logo), and come back together as the head for the numbers at the end.
-// ABOUT.morph(vh): 0 head, 1 pad, 2 vinyl, 3 logo, 4 head again (Studio springs to it).
+// S7: SELECTED GOODS. YFL particles pour DIRECTLY into the LOST MEDIA Collector's Box
+// (zero detour back to head = brisk, punchy scroll!), reverse laser turns it solid,
+// slipcase opens into 3D Exploded View, then smoothly scrolls through the 4 archival drops.
+export const MERCH_COUNT = 4; // 0: LOST MEDIA BOX, 1: STEALTH ERA TEE, 2: PATCH HOODIE, 3: EMBOSSED HOODIE
+export const MERCH = (() => {
+  const [a, b] = CHAPTER_RANGES.merch;
+  const firstItemVh = a + 76;
+  const itemStepVh = 68;
+  const lastItemVh = firstItemVh + (MERCH_COUNT - 1) * itemStepVh;
+  return {
+    start: a,
+    morphToBox: [a - 28, a - 2], // YFL logo -> LOST MEDIA Box (uMorph: 3 -> 4)
+    materialize: [a - 4, a + 26], // reverse turquoise laser sweeps UP: particles -> solid box
+    explode: [a + 28, a + 66], // 3D exploded view: slipcase shifts, iridescent disc slides out
+    firstItemVh,
+    itemStepVh,
+    uiIn: [a + 18, a + 38],
+    uiOut: [lastItemVh + 32, lastItemVh + 48],
+    black: [lastItemVh + 38, lastItemVh + 68],
+    end: b,
+    // Focus cursor 0..3 with subtle linger on each product (same feel as the album tower)
+    focus(vh) {
+      if (vh <= firstItemVh) return 0;
+      const u = (vh - firstItemVh) / itemStepVh;
+      const clamped = Math.min(u, MERCH_COUNT - 1);
+      const i = Math.floor(clamped);
+      if (i >= MERCH_COUNT - 1) return MERCH_COUNT - 1;
+      return i + linger(clamped - i);
+    },
+    vhForItem(idx) {
+      return firstItemVh + idx * itemStepVh;
+    }
+  };
+})();
+
+// "O MNIE" (S6 hold): the scan's read-out. Absolute story-vh.
+// ABOUT.morph(vh): 0 head, 1 pad, 2 vinyl, 3 YFL logo, 4 LOST MEDIA box (direct from YFL!).
 export const ABOUT = (() => {
   const h = REVEAL.hold[0];
   const chapters = [
-    [h + 22, h + 82],
-    [h + 82, h + 142],
-    [h + 142, h + 202]
+    [h + 14, h + 62],
+    [h + 62, h + 110],
+    [h + 110, h + 160]
   ];
-  const stats = [h + 196, h + 214];
-  // each change of shape: from a little before its chapter comes in, over 20 vh
-  const steps = [...chapters.map((c) => c[0]), stats[0]].map((v) => [v - 8, v + 12]);
+  const stats = [h + 156, h + 176];
+  // 0->1 pad, 1->2 vinyl, 2->3 YFL logo, 3->4 LOST MEDIA box
+  const steps = [...chapters.map((c) => c[0]).map((v) => [v - 7, v + 11]), MERCH.morphToBox];
   return {
-    intro: [h - 14, h + 10], // "scan complete", the name decodes
+    intro: [h - 12, h + 8], // "scan complete", the name decodes
     chapters,
     stats,
-    out: [REVEAL.end - 52, REVEAL.end - 34], // everything leaves before the black
+    out: [MERCH.morphToBox[0] - 4, MERCH.morphToBox[0] + 10], // "o mnie" HUD leaves as YFL pours into Box
     morph(vh) {
       let m = 0;
       steps.forEach(([a, b]) => {

@@ -6,6 +6,10 @@ import { makeHeadGeometry, makeNeckGeometry, makeGlasses, HEAD_TOP, HEAD_BOTTOM,
 import { loadHeadAsset, HEAD_FIT, PHOTO_FIT } from './headAsset';
 import { ABOUT } from '../story.config';
 import { makeShapes, PAD_FEATURE_Z } from './aboutShapes';
+import { createParticleSim, packHeadParticles, packShapeTexture, SHAPE_CENTER, BOX_DIMS } from './particleSim';
+import Atrium from './Atrium';
+import LostMediaBox from './LostMediaBox';
+import MerchShowcase from './MerchShowcase';
 import logoUrl from '../../assets/logoyflbiale.avif';
 
 // =====================================================================
@@ -47,7 +51,9 @@ const FOV0 = 54; // degrees, at the seam
 const RIM = new THREE.Color(0.55, 0.85, 0.95); // the studio's turquoise rim light
 const HY_END = 0.056; // the reflection's final scale: metres of glass per unit of the world's NDC (vertical)
 const POINTS = 90000;
-const VISOR_POINTS = 9000;
+const VISOR_POINTS = 10000;
+const SIM_SIZE_DESKTOP = 352; // 123,904 living GPGPU particles
+const SIM_SIZE_MOBILE = 224;  // 50,176 living GPGPU particles on touch/mobile
 
 // ---------------- shaders ----------------
 const HEAD_VERT = /* glsl */ `
@@ -305,132 +311,169 @@ const LENS_FRAG = /* glsl */ `
   }
 `;
 
-// the head as dots: shown above the scan line, scattered just behind it (they settle as the
-// line moves on), the back side fades out, the cursor pushes them off its ray
+// GPGPU-driven living particles: positions + velocities come from ping-pong FBOs (particleSim.js)
+// Features: photo-projected Multi portrait, optical depth-of-field bokeh, kinetic HDR velocity glow,
+// and seamless laser-scan birth behind uScanY.
 const DOTS_VERT = /* glsl */ `
-  attribute vec3 aNormal;
-  attribute float aRnd;
-  // "o mnie": where this dot goes in each chapter's shape (model units, round uShapeC)
-  attribute vec3 aP1; // the game pad
-  attribute vec3 aP2; // the vinyl (flat: tilted and spun here)
-  attribute vec3 aP3; // the YFL logo
-  uniform mat4 uFitM;
+  attribute vec2 aSimUv;
+  uniform sampler2D tSimPos;
+  uniform sampler2D tSimVel;
+  uniform sampler2D tTarget0; // xyz = head-space metres, w = rnd
+  uniform sampler2D tTarget1; // w = pad feature mask
+  uniform sampler2D tTarget2; // xy = flat vinyl coords, w = radius (m)
+  uniform sampler2D tTarget4; // xyz = box local metres, w = edgeMask
+  uniform sampler2D tMeta;    // xyz = head-space normal, w = isVisor
   ${GLSL_PHOTO}
   uniform float uScanY;
   uniform float uScanOn;
+  uniform float uBoxScanY;
+  uniform float uBoxScanOn;
   uniform float uTime;
   uniform float uDpr;
   uniform float uPx;
   uniform vec3 uRim;
-  uniform vec3 uRayO;
-  uniform vec3 uRayD;
-  uniform float uPush;
-  uniform float uMorph; // 0 head, 1 pad, 2 vinyl, 3 logo, 4 head again
+  uniform float uMorph; // 0 head, 1 pad, 2 vinyl, 3 YFL logo, 4 LOST MEDIA box
   uniform vec3 uShapeC;
   uniform float uSpin;
   uniform vec3 uLabelCol; // the vinyl's label: Nowa Fala's colour
-  uniform float uPadFeat; // the pad: above this (aP1.z) a dot is a button / the cross / a stick
   varying vec3 vCol;
   varying float vA;
+  varying float vBokeh;
+  varying float vEnergy;
 
-  vec3 rotX(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(p.x, c * p.y - s * p.z, s * p.y + c * p.z); }
-  vec3 rotY(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z); }
-  vec3 rotZ(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z); }
-
-  // a shape's point for this dot (model space): the head as it is, the others round the
-  // shapes' centre, floating (a slow sway), the vinyl spinning
-  vec3 shapeP(float i) {
-    if (i < 0.5 || i > 3.5) return position;
-    float sway = sin(uTime * 0.45 + i * 1.7) * 0.22;
-    if (i < 1.5) return uShapeC + rotY(rotX(aP1, -0.22 + sin(uTime * 0.6) * 0.05), sway);
-    if (i < 2.5) return uShapeC + rotY(rotX(rotZ(aP2, uSpin), -0.62), sway * 0.5);
-    return uShapeC + rotY(rotX(aP3, -0.08), sway);
-  }
-  // a smooth flow field: the turbulence the dots ride through while they change shape
-  vec3 flow(vec3 p) {
-    return vec3(sin(p.y * 1.7 + p.z * 2.3 + uTime * 0.7), sin(p.z * 1.9 + p.x * 2.1 - uTime * 0.6), sin(p.x * 2.2 + p.y * 1.6 + uTime * 0.5));
-  }
-  // a shape's own colour for this dot
-  vec3 shapeCol(float i, vec3 headCol) {
-    if (i < 0.5 || i > 3.5) return headCol;
-    float tone = 0.55 + 0.7 * fract(aRnd * 17.0);
+  vec3 shapeCol(float i, vec3 headCol, float rnd, float padFeat, vec4 d2, float boxEdge) {
+    if (i < 0.5) return headCol;
+    float tone = 0.58 + 0.68 * fract(rnd * 17.0);
     if (i < 1.5) {
-      // the pad: a dark body, its buttons / cross / sticks bright (they stand proud of the face)
-      if (aP1.z > uPadFeat) return mix(vec3(0.95, 1.0, 1.0), uRim * 1.3, step(0.5, fract(aRnd * 5.0)) * 0.6);
-      return aP1.z > uPadFeat * 0.7 ? vec3(0.42, 0.5, 0.56) * tone : vec3(0.2, 0.25, 0.29) * tone;
+      // the pad: dark obsidian body, crisp luminous buttons / dpad / sticks
+      if (padFeat > 0.75) return mix(vec3(0.95, 1.0, 1.0), uRim * 1.45, step(0.5, fract(rnd * 5.0)) * 0.65);
+      return padFeat > 0.25 ? vec3(0.42, 0.52, 0.58) * tone : vec3(0.20, 0.26, 0.30) * tone;
     }
     if (i < 2.5) {
-      float r = length(aP2.xy);
-      // grooves catch the light in a band that stays put while the record turns
-      float sheen = pow(abs(cos(atan(aP2.y, aP2.x) + uSpin - 0.8)), 14.0);
-      vec3 grooves = vec3(0.26, 0.32, 0.36) * tone + vec3(0.85, 0.92, 0.96) * sheen * 0.9;
-      return r < 0.215 ? uLabelCol * (0.75 + 0.5 * fract(aRnd * 11.0)) : grooves;
+      float r = d2.w;
+      // grooves catch the overhead light in a clean specular band while the disc spins
+      float sheen = pow(abs(cos(atan(d2.y, d2.x) + uSpin - 0.8)), 14.0);
+      vec3 grooves = vec3(0.24, 0.30, 0.35) * tone + vec3(0.88, 0.94, 1.0) * sheen * 0.95;
+      return r < 0.0482 ? uLabelCol * (0.78 + 0.48 * fract(rnd * 11.0)) : grooves;
     }
-    return vec3(0.96, 0.98, 1.0) * (0.75 + 0.35 * fract(aRnd * 17.0));
+    if (i < 3.5) {
+      return vec3(0.96, 0.98, 1.0) * (0.76 + 0.34 * fract(rnd * 17.0));
+    }
+    // S7 LOST MEDIA Collector's Box: obsidian archival body + crisp luminous edges/frame
+    vec3 boxBody = vec3(0.18, 0.24, 0.28) * tone;
+    vec3 boxRimCol = mix(vec3(0.90, 0.96, 1.0), uRim * 1.45, 0.55);
+    return mix(boxBody, boxRimCol, smoothstep(0.2, 0.9, boxEdge));
   }
 
   void main() {
-    // --- "o mnie": which shapes, how far between them (each dot leaves at its own moment) ---
+    vec4 posData = texture2D(tSimPos, aSimUv);
+    vec4 velData = texture2D(tSimVel, aSimUv);
+    vec4 d0 = texture2D(tTarget0, aSimUv);
+    vec4 d1 = texture2D(tTarget1, aSimUv);
+    vec4 d2 = texture2D(tTarget2, aSimUv);
+    vec4 d4 = texture2D(tTarget4, aSimUv);
+    vec4 meta = texture2D(tMeta, aSimUv);
+
+    vec3 hp = d0.xyz;
+    float rnd = d0.w;
+    vec3 hn = normalize(meta.xyz + vec3(0.0, 0.0, 1e-4));
+    float isVisor = meta.w;
+    float life = posData.w;
+    float speed = length(velData.xyz);
+    float energy = clamp(velData.w, 0.0, 1.0);
+
+    // Chapter blend (0 head -> 1 pad -> 2 vinyl -> 3 YFL -> 4 LOST MEDIA box)
     float m = clamp(uMorph, 0.0, 4.0);
     float seg = min(floor(m), 3.0);
-    float lt = smoothstep(0.0, 1.0, clamp((m - seg - aRnd * 0.4) / 0.6, 0.0, 1.0));
-    float fly = sin(3.14159 * lt); // 0 at rest, 1 mid-flight
-    vec3 mp = mix(shapeP(seg), shapeP(seg + 1.0), lt);
-    // mid-flight they swirl round the shapes' axis and ride the flow (model units: 1 = 25 cm)
-    mp = uShapeC + rotY(mp - uShapeC, fly * (1.1 + aRnd * 1.4));
-    mp += flow(mp * 3.0 + aRnd * 6.0) * fly * (0.1 + 0.16 * aRnd);
-    float headK = seg < 0.5 ? 1.0 - lt : (seg > 2.5 ? lt : 0.0);
+    float wave = clamp(rnd * 0.65 + (0.22 - hp.y) * 0.85, 0.0, 1.0);
+    float lt = smoothstep(0.0, 1.0, clamp((m - seg - wave * 0.44) / 0.56, 0.0, 1.0));
+    float fly = sin(3.14159265 * lt);
+    float headK = seg < 0.5 ? 1.0 - lt : 0.0;
     float shapeK = 1.0 - headK;
 
-    vec4 w = modelMatrix * vec4(mp, 1.0);
-    vec3 nW = normalize(mat3(modelMatrix) * aNormal);
-    vec3 hp = (uFitM * vec4(position, 1.0)).xyz;
-    vec3 hn = normalize(mat3(uFitM) * aNormal);
-    float above = (modelMatrix * vec4(position, 1.0)).y - uScanY;
-    float shown = uScanOn > 0.5 ? smoothstep(0.0, 0.004, above) : 0.0;
-    float settle = smoothstep(0.0, 0.06, above);
-    vec3 jit = vec3(fract(aRnd * 13.17), fract(aRnd * 7.31), fract(aRnd * 3.73)) - 0.5;
-    w.xyz += (nW * 0.02 + jit * 0.035) * (1.0 - settle);
-    w.xyz += nW * sin(uTime * 1.7 + aRnd * 31.0 + w.y * 45.0) * 0.0011;
-    // the cursor: pushed away from its ray, flowing back as it leaves
-    vec3 cl = uRayO + uRayD * dot(w.xyz - uRayO, uRayD);
-    vec3 away = w.xyz - cl;
-    float dd = length(away);
-    float push = exp(-dd * dd / (0.03 * 0.03)) * uPush;
-    w.xyz += (away / max(dd, 1e-4)) * push * 0.028 + nW * push * 0.012 * headK;
+    float above = hp.y - uScanY;
+    float shown = uScanOn > 0.5 ? smoothstep(0.0, 0.004, above) * smoothstep(0.0, 0.04, life + 0.02) : 0.0;
+    // Reverse materialization laser (S7): particles BELOW uBoxScanY fuse into the solid Collector's Box
+    float boxAbove = d4.y - uBoxScanY;
+    if (uBoxScanOn > 0.5) {
+      shown *= smoothstep(-0.002, 0.007, boxAbove);
+    }
+
+    vec4 w = modelMatrix * vec4(posData.xyz, 1.0);
+    vec3 nW = normalize(mat3(modelMatrix) * hn);
     vec4 mv = viewMatrix * w;
     gl_Position = projectionMatrix * mv;
+
     vec3 v = normalize(cameraPosition - w.xyz);
     float facing = dot(nW, v);
-    // (the head's back faces drop out; a shape is all seen)
-    shown *= mix(smoothstep(-0.2, 0.2, facing), 1.0, shapeK);
-    gl_PointSize = min(uPx * uDpr * (0.55 + 0.9 * aRnd) * (1.0 + fly * 0.35) * (0.95 / -mv.z), 48.0) * step(0.001, shown);
+    float isDrifter = smoothstep(0.885, 0.915, rnd);
+    // Head back-faces fade smoothly at rest, but stay visible for orbiting aura drifters, wakes, and morphs
+    float backVis = mix(smoothstep(-0.18, 0.22, facing), 1.0, max(max(shapeK, isDrifter * 0.85), smoothstep(0.06, 0.28, speed)));
+    shown *= backVis;
+    // Aura drifters stay delicate & translucent so they never clutter the portrait
+    shown *= mix(1.0, 0.62, isDrifter * (1.0 - fly));
+
+    // Optical depth-of-field bokeh relative to the centre of the face / active shape
+    vec4 focusMv = viewMatrix * modelMatrix * vec4(uShapeC, 1.0);
+    float depthOff = abs(-mv.z - (-focusMv.z));
+    float bokeh = smoothstep(0.085, 0.34, depthOff);
+
+    float shimmer = 0.90 + 0.10 * sin(uTime * 3.8 + rnd * 62.8318);
+    float sizeScale = (0.58 + 0.82 * rnd) * mix(1.0, 0.78, isDrifter) * (1.0 + bokeh * 1.45 + energy * 0.42 + fly * 0.2) * shimmer;
+    gl_PointSize = min(uPx * uDpr * sizeScale * (0.95 / max(-mv.z, 0.05)), 52.0) * step(0.005, shown);
+
+    // Portrait & material lighting
     float key = max(dot(nW, normalize(vec3(-0.55, 0.55, 0.65))), 0.0);
     float rim = pow(1.0 - max(facing, 0.0), 2.5);
-    vec3 teal = vec3(0.16, 0.27, 0.31) * (0.35 + 0.9 * key) + vec3(0.76, 0.84, 0.88) * key * key * 0.35 + uRim * rim * 0.7;
-    // the photo's colours where it saw the head: a pointillist Multi (brightened: dots are sparse)
+    vec3 teal = vec3(0.15, 0.26, 0.31) * (0.34 + 0.92 * key) + vec3(0.76, 0.84, 0.88) * key * key * 0.35 + uRim * rim * 0.72;
+
     vec2 puv = photoUv(hp);
     float pw = photoW(hn, puv);
     vec3 photo = texture2D(tPhoto, clamp(puv, 0.0, 1.0)).rgb;
-    vec3 headCol = mix(teal, photo * 3.0 + vec3(0.03, 0.045, 0.05) + uRim * rim * 0.45, pw);
-    headCol = max(headCol, teal * 0.5); // the silhouette always reads, even where the photo is black
-    headCol *= spotK(hp);
-    vCol = mix(shapeCol(seg, headCol), shapeCol(seg + 1.0, headCol), lt);
-    // moving fast, they glow and turn turquoise (and back as they land)
-    vCol = mix(vCol, uRim * 1.5 + vec3(0.15), fly * 0.6);
-    vCol += uRim * exp(-pow(above / 0.008, 2.0)) * 1.6 * uScanOn * spotK(hp);
-    vCol *= 1.0 + push * 0.8;
+    vec3 skinCol = mix(teal, photo * 2.95 + vec3(0.025, 0.04, 0.048) + uRim * rim * 0.48, pw);
+    skinCol = max(skinCol, teal * 0.48);
+
+    // Balenciaga shield visor reads as dark sculpted glass with cool specular edge
+    vec3 visorCol = vec3(0.035, 0.05, 0.062) + vec3(0.78, 0.90, 0.96) * pow(key, 5.0) * 0.72 + uRim * rim * 0.95;
+    visorCol = mix(visorCol, photo * 1.45 + uRim * rim * 0.55, pw * 0.42);
+    vec3 headCol = mix(skinCol, visorCol, isVisor) * spotK(hp);
+
+    vCol = mix(shapeCol(seg, headCol, rnd, d1.w, d2, d4.w), shapeCol(seg + 1.0, headCol, rnd, d1.w, d2, d4.w), lt);
+
+    // Kinetic HDR energy: fast cursor wakes & morph vortices glow luminous cold turquoise (blooms in Compositor)
+    float kineticGlow = clamp(energy * 0.75 + smoothstep(0.16, 0.85, speed) * 0.65, 0.0, 1.35);
+    vec3 hotCol = uRim * 1.45 + vec3(0.28, 0.36, 0.40);
+    vCol = mix(vCol, hotCol, clamp(kineticGlow * 0.68, 0.0, 0.88));
+    vCol *= 1.0 + kineticGlow * 0.45;
+
+    // Laser scan birth flare (S6 head) + reverse materialization fusion flare (S7 box)
+    float scanBand = exp(-pow(above / 0.009, 2.0)) * uScanOn * spotK(hp);
+    float birthFlare = (1.0 - smoothstep(0.0, 0.55, life)) * uScanOn * spotK(hp);
+    float boxBand = exp(-pow(boxAbove / 0.009, 2.0)) * uBoxScanOn;
+    vCol += uRim * (scanBand * 1.85 + birthFlare * 0.65 + boxBand * 2.4);
+
     vA = shown;
+    vBokeh = bokeh;
+    vEnergy = kineticGlow;
   }
 `;
 
 const DOTS_FRAG = /* glsl */ `
   varying vec3 vCol;
   varying float vA;
+  varying float vBokeh;
+  varying float vEnergy;
   void main() {
     vec2 c = gl_PointCoord - 0.5;
-    if (dot(c, c) > 0.25 || vA < 0.01) discard;
-    gl_FragColor = vec4(vCol * vA, 1.0);
+    float r = length(c);
+    if (r > 0.5 || vA < 0.008) discard;
+    // Crisp anti-aliased dot in focus -> creamy optical bokeh disc out of focus
+    float innerEdge = mix(0.22, 0.04, vBokeh);
+    float disc = 1.0 - smoothstep(innerEdge, 0.5, r);
+    float core = exp(-r * r * mix(16.0, 5.5, vBokeh));
+    float alpha = vA * disc * mix(0.94, 0.32, vBokeh);
+    vec3 col = vCol * (0.86 + 0.30 * core + vEnergy * 0.38 * core);
+    gl_FragColor = vec4(col, clamp(alpha, 0.0, 1.0));
   }
 `;
 
@@ -480,6 +523,16 @@ const _right = new THREE.Vector3();
 const _toCam = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _ndc = new THREE.Vector2();
+const _invHead = new THREE.Matrix4();
+const _rayO = new THREE.Vector3();
+const _rayD = new THREE.Vector3();
+const _hit = new THREE.Vector3();
+const _swipeRaw = new THREE.Vector3();
+const _fitMat = new THREE.Matrix4();
+const _fitPos = new THREE.Vector3();
+const _fitQuat = new THREE.Quaternion();
+const _fitEuler = new THREE.Euler();
+const _fitScale = new THREE.Vector3();
 
 export default function Studio({ state }) {
   const { gl, size } = useThree();
@@ -489,8 +542,40 @@ export default function Studio({ state }) {
     return { scene, camera };
   }, []);
   const headGroup = useRef();
-  const follow = useRef({ u: 0, v: 0, yaw: 0, pitch: 0, push: 0, lastX: 0, lastY: 0, m: 0, mv: 0 });
+  const studioState = useRef({ cloudEnergy: 0 });
+  const boxPoseRef = useRef({ rx: 0.07, ry: -0.30 });
+  const follow = useRef({
+    u: 0, v: 0, yaw: 0, pitch: 0, m: 0, mv: 0,
+    cx: 0, cy: 0, pointerSeen: false, cursorOn: 0, cursorSpd: 0,
+    hasHit: false, prevHit: new THREE.Vector3(), swipeVel: new THREE.Vector3()
+  });
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
+
+  // GPGPU ping-pong particle physics engine (desktop: 352^2 = 123,904 particles; touch: 224^2 = 50,176)
+  const isTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+  const sim = useMemo(() => createParticleSim(gl, isTouch ? SIM_SIZE_MOBILE : SIM_SIZE_DESKTOP), [gl, isTouch]);
+  const simNeedsReset = useRef(true);
+  useEffect(() => () => sim?.dispose(), [sim]);
+
+  // Also allow touch-dragging on mobile to stir the particle cloud
+  useEffect(() => {
+    const onMove = () => {
+      follow.current.pointerSeen = true;
+    };
+    const onTouch = (e) => {
+      const t = e.touches?.[0];
+      if (!t) return;
+      state.current.pointer.x = (t.clientX / window.innerWidth) * 2 - 1;
+      state.current.pointer.y = -((t.clientY / window.innerHeight) * 2 - 1);
+      follow.current.pointerSeen = true;
+    };
+    window.addEventListener('mousemove', onMove, { passive: true });
+    window.addEventListener('touchmove', onTouch, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onTouch);
+    };
+  }, [state]);
 
   // the real head (if its files are there); the placeholder until then / without them
   const [asset, setAsset] = useState(null);
@@ -520,12 +605,6 @@ export default function Studio({ state }) {
   const mats = useMemo(() => {
     const rim = { value: RIM };
     const scan = { uScanY: { value: HEAD_TOP }, uScanOn: { value: 0 } };
-    // the cursor's ray and how hard it pushes the dots
-    const cursor = {
-      uRayO: { value: new THREE.Vector3(0, 0, 10) },
-      uRayD: { value: new THREE.Vector3(0, 0, -1) },
-      uPush: { value: 0 }
-    };
     // shared by the solid head and the dots
     const photo = {
       tPhoto: { value: null },
@@ -561,18 +640,29 @@ export default function Studio({ state }) {
       dots: new THREE.ShaderMaterial({
         vertexShader: DOTS_VERT,
         fragmentShader: DOTS_FRAG,
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        blending: THREE.NormalBlending,
         uniforms: {
           ...scan,
           ...photo,
+          tSimPos: { value: sim?.posTex ?? null },
+          tSimVel: { value: sim?.velTex ?? null },
+          tTarget0: { value: sim?.textures.tTarget0 ?? null },
+          tTarget1: { value: sim?.textures.tTarget1 ?? null },
+          tTarget2: { value: sim?.textures.tTarget2 ?? null },
+          tTarget4: { value: sim?.textures.tTarget4 ?? null },
+          tMeta: { value: sim?.textures.tMeta ?? null },
+          uBoxScanY: { value: -BOX_DIMS.h },
+          uBoxScanOn: { value: 0 },
           uTime: { value: 0 },
           uDpr: { value: 1 },
-          uPx: { value: 3.2 },
-          ...cursor,
+          uPx: { value: isTouch ? 4.3 : 3.4 },
           uMorph: { value: 0 },
-          uShapeC: { value: new THREE.Vector3() },
+          uShapeC: { value: SHAPE_CENTER.clone() },
           uSpin: { value: 0 },
           uLabelCol: { value: new THREE.Vector3(0.92, 0.56, 0.5) },
-          uPadFeat: { value: 1 },
           uRim: rim
         }
       }),
@@ -583,7 +673,7 @@ export default function Studio({ state }) {
         uniforms: { uRim: rim }
       })
     };
-  }, []);
+  }, [sim, isTouch]);
 
   const glasses = useMemo(
     () =>
@@ -684,24 +774,48 @@ export default function Studio({ state }) {
     im.src = logoUrl;
   }, []);
   useEffect(() => {
-    const f = asset ? HEAD_FIT : { scale: 1, position: [0, 0, 0] };
-    const C = [0, -0.012, 0.045]; // the shapes' centre: in front of the middle of the face (head space)
-    mats.dots.uniforms.uPadFeat.value = (PAD_FEATURE_Z * 0.86) / f.scale;
-    mats.dots.uniforms.uShapeC.value.set((C[0] - f.position[0]) / f.scale, (C[1] - f.position[1]) / f.scale, (C[2] - f.position[2]) / f.scale);
-    const geos = asset ? [asset.dots, visorDots].filter(Boolean) : [parts.dots];
-    geos.forEach((g, gi) => {
-      const n = g.getAttribute('position').count;
-      const sh = makeShapes(n, logoImg, 11 + gi * 31);
-      [['aP1', sh.pad], ['aP2', sh.vinyl], ['aP3', sh.logo]].forEach(([name, arr]) => {
-        // (a little smaller than the head: clear of the read-out on both sides)
-        for (let i = 0; i < arr.length; i++) arr[i] *= 0.86 / f.scale;
-        g.setAttribute(name, new THREE.BufferAttribute(arr, 3));
-      });
-    });
+    if (!sim) {
+      if (assetTried && logoTried) state.current.studioPrep = (state.current.studioPrep ?? 0) + 1;
+      return;
+    }
+    const f = asset ? HEAD_FIT : { scale: 1, position: [0, 0, 0], rotation: [0, 0, 0] };
+    _fitPos.fromArray(f.position);
+    _fitEuler.set(f.rotation[0], f.rotation[1], f.rotation[2]);
+    _fitQuat.setFromEuler(_fitEuler);
+    _fitScale.setScalar(f.scale);
+    _fitMat.compose(_fitPos, _fitQuat, _fitScale);
+
+    const srcHead = asset ? asset.dots : parts.dots;
+    const srcVisor = asset ? visorDots : null;
+    const { target0, meta } = packHeadParticles(srcHead, srcVisor, _fitMat, sim.count);
+
+    const sh = makeShapes(sim.count, logoImg, 11);
+    const padFeatZ = PAD_FEATURE_Z * 0.86;
+    const target1 = packShapeTexture(sh.pad, sim.count, 0.86, (_x, _y, z) =>
+      z > padFeatZ ? 1.0 : z > padFeatZ * 0.7 ? 0.5 : 0.0
+    );
+    const target2 = packShapeTexture(sh.vinyl, sim.count, 0.86, (x, y) => Math.hypot(x, y));
+    const target3 = packShapeTexture(sh.logo, sim.count, 0.86);
+
+    sim.setTargetData(0, target0);
+    sim.setTargetData(1, target1);
+    sim.setTargetData(2, target2);
+    sim.setTargetData(3, target3);
+    sim.setTargetData(4, meta);
+
+    // Pre-compile & warm up the GPGPU simulation shaders right now (0 hitches mid-scroll)
+    sim.shared.uScanY.value = scanRange.current[0];
+    sim.shared.uScanOn.value = 0;
+    sim.shared.uMorph.value = 0;
+    sim.step(gl, 1 / 60, true);
+    mats.dots.uniforms.tSimPos.value = sim.posTex;
+    mats.dots.uniforms.tSimVel.value = sim.velTex;
+    simNeedsReset.current = true;
+
     // the studio is complete (its head, if there is one, and the shapes): the Compositor may
     // warm it up (compile + upload) now; each new version is warmed again
     if (assetTried && logoTried) state.current.studioPrep = (state.current.studioPrep ?? 0) + 1;
-  }, [asset, assetTried, visorDots, parts, logoImg, logoTried, mats, state]);
+  }, [sim, gl, asset, assetTried, visorDots, parts, logoImg, logoTried, mats, state]);
 
   // hand the scene + camera to the Compositor
   useEffect(() => {
@@ -747,6 +861,13 @@ export default function Studio({ state }) {
       F.v = 0;
       F.yaw = -0.24 * (1 - smooth(0.55, 1.0, F.u));
       F.pitch = 0;
+      F.m = ABOUT.morph(s.vh ?? 0);
+      F.mv = 0;
+      F.cx = s.pointer.x;
+      F.cy = s.pointer.y;
+      F.hasHit = false;
+      F.swipeVel.set(0, 0, 0);
+      simNeedsReset.current = true;
     }
 
     // the scroll gives a target; the camera follows it on a spring (inertia, never a rail)
@@ -761,14 +882,18 @@ export default function Studio({ state }) {
     s.studioU = F.u; // the director hands the screen back to the world only once this is ~0
 
     // the head: looks off to its right, turns to the camera as it arrives; in the hold it
-    // follows the cursor
+    // follows the cursor; in S7 (Collector's Box) settles level so the Box owns its own 3/4 tilt
     const p = s.pointer;
     const hold = s.revHold ?? 0;
+    const boxMorph = s.boxMorph ?? 0;
+    const boxScan = s.boxScan ?? 0;
+    const boxExplode = s.boxExplode ?? 0;
+    const headFollow = hold * (1 - boxMorph);
     const k = 1 - Math.exp(-d * 3);
-    F.yaw += (-0.24 * (1 - smooth(0.55, 1.0, u)) + p.sx * 0.28 * hold - F.yaw) * k;
-    F.pitch += (-p.sy * 0.12 * hold - F.pitch) * k;
+    F.yaw += (-0.24 * (1 - smooth(0.55, 1.0, u)) + p.sx * 0.28 * headFollow - F.yaw) * k;
+    F.pitch += (-p.sy * 0.12 * headFollow - F.pitch) * k;
     const hg = headGroup.current;
-    hg.rotation.set(F.pitch, F.yaw + Math.sin(time * 0.31) * 0.012 * hold, 0, 'YXZ');
+    hg.rotation.set(F.pitch, F.yaw + Math.sin(time * 0.31) * 0.012 * headFollow, 0, 'YXZ');
     hg.updateMatrixWorld(true);
 
     // where the lens is now (it moves with the head)
@@ -786,31 +911,36 @@ export default function Studio({ state }) {
     // frame the whole way back (the camera only ever turns round it), and only at the very
     // end does the frame ease aside: the head to the left on wide screens (room for the text
     // on the right), the head up on tall ones
-    // (in the hold the camera comes round to almost face on: the shapes read best that way)
-    const yaw = THREE.MathUtils.lerp(lensYaw, END_YAW * (1 - 0.7 * hold), smooth(0.2, 1.0, u)) + p.sx * 0.05 * hold;
-    const pitch = THREE.MathUtils.lerp(0, END_PITCH, smooth(0.25, 1.0, u)) + p.sy * 0.03 * hold;
+    // (in the hold the camera opens out slightly into the brutalist atrium so the plinth,
+    // volumetric skylight, and colonnade parallax cleanly round Multi's living particle head)
+    const chapterArc = Math.sin(F.m * 1.45) * 0.085 * hold * wide;
+    const yaw =
+      THREE.MathUtils.lerp(lensYaw, END_YAW * (1 - 0.72 * hold), smooth(0.2, 1.0, u)) +
+      chapterArc +
+      p.sx * (0.095 * wide + 0.05 * (1 - wide)) * hold;
+    const pitch = THREE.MathUtils.lerp(0, END_PITCH, smooth(0.25, 1.0, u)) + p.sy * 0.045 * hold;
     _dir.set(Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
     _right.set(Math.cos(yaw), 0, -Math.sin(yaw));
     const settle = smooth(0.68, 1.0, u);
     // (on tall screens a nudge the other way: the 3/4 view swings the head right of the anchor)
-    // ("o mnie", the hold: the head steps further aside for the read-out: left / up)
     // ("o mnie", the hold: back to the middle, the read-out goes round it)
-    _pivot.copy(_lens).addScaledVector(_right, (0.13 * wide + 0.075 * (1 - wide)) * settle * (1 - hold) + 0.025 * hold);
-    _pivot.y -= (0.03 * wide + 0.11 * (1 - wide)) * settle + 0.07 * (1 - wide) * hold;
-    // on a tall screen the long lens is narrow: end further back so the head fits across
-    const d1 = D1 * Math.pow(Math.max(1, 0.9 / aspect), 0.8);
+    _pivot.copy(_lens).addScaledVector(_right, (0.13 * wide + 0.075 * (1 - wide)) * settle * (1 - hold) + 0.02 * hold);
+    _pivot.y -= (0.03 * wide + 0.11 * (1 - wide)) * settle + 0.07 * (1 - wide) * hold + 0.018 * wide * hold;
+    // on a tall screen the long lens is narrow: end further back so the head fits across;
+    // in HOLD breathe slightly wider to frame the monolithic plinth & colonnade
+    const d1 = D1 * Math.pow(Math.max(1, 0.9 / aspect), 0.8) * (1 + 0.15 * hold * wide);
     const dist = D0 * Math.pow(d1 / D0, u);
     cam.position.copy(_pivot).addScaledVector(_dir, dist);
     // handheld: a slight drift once off the glass
     const drift = smooth(0.3, 1.0, u);
-    cam.position.x += Math.sin(time * 0.43) * 0.0025 * drift;
-    cam.position.y += Math.sin(time * 0.37 + 1.2) * 0.0018 * drift;
+    cam.position.x += Math.sin(time * 0.43) * 0.003 * drift;
+    cam.position.y += Math.sin(time * 0.37 + 1.2) * 0.0022 * drift;
     cam.up.set(0, 1, 0);
     cam.lookAt(_pivot);
     // a roll that comes and goes in flight (none at the seam, none at the end)
     cam.rotateZ(Math.sin(Math.PI * smooth(0.04, 0.9, u)) * 4 * DEG);
-    // dolly zoom: wide on the glass, long lens on the head
-    cam.fov = THREE.MathUtils.lerp(FOV0, 29, smooth(0.0, 0.9, u));
+    // dolly zoom: wide on the glass, long lens on the head, gently breathing wider into the atrium
+    cam.fov = THREE.MathUtils.lerp(FOV0, 29, smooth(0.0, 0.9, u)) + 5.0 * hold * wide;
     cam.aspect = aspect;
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
@@ -861,45 +991,118 @@ export default function Studio({ state }) {
     // the photo's projection (live in dev: window.__photoFit)
     mats.photo.uPhotoFit.value.set(PHOTO_FIT.cx, PHOTO_FIT.cy, PHOTO_FIT.k, PHOTO_FIT.size);
 
-    // --- scan + dots ---
+    // --- scan + GPGPU living particle simulation ---
     const scanY = THREE.MathUtils.lerp(scanRange.current[0], scanRange.current[1], s.revScan);
+    const scanOn = s.revScan > 0 ? 1 : 0;
     mats.head.uniforms.uScanY.value = scanY;
-    mats.head.uniforms.uScanOn.value = s.revScan > 0 ? 1 : 0;
+    mats.head.uniforms.uScanOn.value = scanOn;
     const du = mats.dots.uniforms;
     du.uTime.value = time;
     du.uDpr.value = gl.getPixelRatio();
-    // the cursor's ray, and how hard it pushes (only while it moves, fades when it rests)
-    const moved = Math.abs(p.x - F.lastX) + Math.abs(p.y - F.lastY);
-    F.lastX = p.x;
-    F.lastY = p.y;
-    F.push += ((moved > 0.0005 ? 1 : 0) * hold - F.push) * (1 - Math.exp(-d * (moved > 0.0005 ? 8 : 1.5)));
-    _ndc.set(p.sx, p.sy);
-    raycaster.setFromCamera(_ndc, cam);
-    du.uRayO.value.copy(raycaster.ray.origin);
-    du.uRayD.value.copy(raycaster.ray.direction);
-    du.uPush.value = F.push;
 
-    // --- "o mnie": the dots pour from the head into each chapter's shape and back ---
-    {
-      const target = ABOUT.morph(s.vh ?? 0);
-      // a soft spring on the scroll: the dots never jerk, whatever the scroll does
-      F.mv += ((target - F.m) * 30 - F.mv * 9) * d;
+    // --- "o mnie": soft spring on scroll -> morph target ---
+    const morphTarget = ABOUT.morph(s.vh ?? 0);
+    const jumped = Math.abs(morphTarget - F.m) > 1.5;
+    if (jumped) {
+      F.m = morphTarget;
+      F.mv = 0;
+    } else {
+      F.mv += ((morphTarget - F.m) * 28 - F.mv * 8.5) * d;
       F.m += F.mv * d;
-      if (Math.abs(target - F.m) > 1.5) F.m = target; // (a jump: a menu link, a reload)
-      du.uMorph.value = F.m;
-      du.uSpin.value = time * 0.9;
-      const lc = s.albumColors?.[0];
-      if (lc) du.uLabelCol.value.set(lc[0], lc[1], lc[2]);
     }
+    const spin = time * 0.9;
+    du.uMorph.value = F.m;
+    du.uSpin.value = spin;
+    const lc = s.albumColors?.[0];
+    if (lc) du.uLabelCol.value.set(lc[0], lc[1], lc[2]);
 
+    // --- 3D cursor ray + swipe velocity in head-local space ---
+    const fastK = 1 - Math.exp(-d * 26);
+    F.cx += (p.x - F.cx) * fastK;
+    F.cy += (p.y - F.cy) * fastK;
+    _ndc.set(F.cx, F.cy);
+    raycaster.setFromCamera(_ndc, cam);
+    _invHead.copy(hg.matrixWorld).invert();
+    _rayO.copy(raycaster.ray.origin).applyMatrix4(_invHead);
+    _rayD.copy(raycaster.ray.direction).transformDirection(_invHead).normalize();
+
+    // Closest point on the cursor ray to the centre of the head/shape (head-local metres)
+    const tPlane = _hit.copy(SHAPE_CENTER).sub(_rayO).dot(_rayD);
+    _hit.copy(_rayO).addScaledVector(_rayD, tPlane);
+    if (F.hasHit && d > 1e-4) {
+      _swipeRaw.copy(_hit).sub(F.prevHit).divideScalar(d);
+      const rawSpd = _swipeRaw.length();
+      if (rawSpd > 2.4) _swipeRaw.multiplyScalar(2.4 / rawSpd);
+      const velBlend = 1 - Math.exp(-d * (rawSpd > 0.04 ? 18 : 6));
+      F.swipeVel.lerp(_swipeRaw, velBlend);
+    } else {
+      F.swipeVel.set(0, 0, 0);
+      F.hasHit = true;
+    }
+    F.prevHit.copy(_hit);
+
+    const swipeSpd = F.swipeVel.length();
+    const targetCursorOn = (F.pointerSeen ? Math.max(hold, scanOn * 0.45) : 0) * (1 - smooth(0.0, 0.35, boxScan));
+    F.cursorOn += (targetCursorOn - F.cursorOn) * (1 - Math.exp(-d * 6));
+    const normSpd = Math.min(swipeSpd / 0.9, 1.35);
+    F.cursorSpd += (normSpd - F.cursorSpd) * (1 - Math.exp(-d * (normSpd > F.cursorSpd ? 16 : 4)));
+
+    // Shared Collector's Box 3/4 pose (pixel-locked between GPGPU particles and solid LostMediaBox)
+    const bp = boxPoseRef.current;
+    const targetRx = 0.065 + Math.sin(time * 0.5) * 0.022 - p.sy * 0.15 * boxMorph;
+    const targetRy = -0.32 + Math.sin(time * 0.36) * 0.065 + p.sx * 0.28 * boxMorph + boxExplode * 0.16;
+    const bpK = 1 - Math.exp(-d * 5.5);
+    bp.rx += (targetRx - bp.rx) * bpK;
+    bp.ry += (targetRy - bp.ry) * bpK;
+
+    // Reverse turquoise laser scan sweeping UP the Collector's Box (particles -> solid textured box)
+    const boxScanY = THREE.MathUtils.lerp(-BOX_DIMS.h * 0.5 - 0.014, BOX_DIMS.h * 0.5 + 0.026, boxScan);
+    const boxScanOn = boxScan > 0.002 ? 1 : 0;
+    du.uBoxScanY.value = boxScanY;
+    du.uBoxScanOn.value = boxScanOn;
+
+    // Live kinetic cloud energy drives reactive bounce light on the plinth, floor reflections & ribs
+    const scanPulse = s.revScan * (1 - s.revScan) * 2.2 + boxScan * (1 - boxScan) * 2.6;
+    const rawCloudEnergy = Math.min(1.0, F.cursorSpd * 0.55 + Math.min(Math.abs(F.mv), 1.5) * 0.45 + scanPulse * 0.6);
+    studioState.current.cloudEnergy += (rawCloudEnergy - studioState.current.cloudEnergy) * (1 - Math.exp(-d * 6));
+
+    if (sim) {
+      const sh = sim.shared;
+      const vu = sim.velUniforms;
+      sh.uTime.value = time;
+      sh.uSpin.value = spin;
+      sh.uMorph.value = F.m;
+      sh.uScanY.value = scanY;
+      sh.uScanOn.value = scanOn;
+      sh.uBoxRot.value.set(bp.rx, bp.ry);
+      vu.uHold.value = hold;
+      vu.uRayO.value.copy(_rayO);
+      vu.uRayD.value.copy(_rayD);
+      vu.uSwipeVel.value.copy(F.swipeVel);
+      vu.uCursorOn.value = F.cursorOn;
+      vu.uCursorSpd.value = F.cursorSpd;
+      vu.uMorphVel.value = Math.abs(F.mv);
+
+      const needReset = simNeedsReset.current || jumped;
+      // Pause GPGPU stepping once 100% of particles have fused into the solid Collector's Box
+      if (boxScan < 0.995 || needReset) {
+        sim.step(gl, d, needReset);
+        simNeedsReset.current = false;
+      }
+      du.tSimPos.value = sim.posTex;
+      du.tSimVel.value = sim.velTex;
+    }
   });
 
   return createPortal(
     <>
-      {/* the dark studio behind */}
-      <mesh position={[0.05, 0.02, -0.9]} renderOrder={-5} material={mats.back}>
-        <planeGeometry args={[4, 3]} />
+      {/* the dark studio behind (visible during visor pull-back before the atrium materializes) */}
+      <mesh position={[0.05, 0.02, -8.5]} renderOrder={-5} material={mats.back}>
+        <planeGeometry args={[18, 12]} />
       </mesh>
+
+      {/* Klinika Lost Media — Brutalist Concrete Atrium (materializes via Blueprint wave on scan) */}
+      <Atrium state={state} studioState={studioState} />
 
       <group ref={headGroup}>
         {asset ? (
@@ -911,16 +1114,17 @@ export default function Studio({ state }) {
                 <object3D ref={visorAnchor} />
               </>
             )}
-            <points geometry={asset.dots} material={mats.dots} frustumCulled={false} />
-            {visorDots && <points geometry={visorDots} material={mats.dots} frustumCulled={false} />}
           </group>
         ) : (
           <group ref={fitRef}>
             <mesh geometry={parts.head} material={mats.head} />
             <mesh geometry={parts.neck} material={mats.head} />
-            <points geometry={parts.dots} material={mats.dots} frustumCulled={false} />
           </group>
         )}
+        {sim && <points geometry={sim.pointsGeo} material={mats.dots} frustumCulled={false} renderOrder={2} />}
+        {/* S7: Physical textured LOST MEDIA Collector's Box + Iridescent Disc + Selected Goods garments */}
+        <LostMediaBox state={state} boxPoseRef={boxPoseRef} />
+        <MerchShowcase state={state} />
         <primitive object={glasses.group} visible={!asset?.visor} />
       </group>
     </>,

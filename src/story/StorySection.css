@@ -1129,3 +1129,257 @@
     font-size: clamp(2rem, 10vw, 3rem);
   }
 }
+
+/* ---------- S7: SELECTED GOODS (Dark Lost Media Archival Showcase) ---------- */
+.story-merch {
+  position: absolute;
+  inset: 0;
+  height: 100svh;
+  z-index: 2;
+  opacity: 0;
+  color: #eef4f6;
+  --merch-key: rgb(140, 217, 242);
+}
+
+.story-merch-head {
+  position: absolute;
+  top: calc(var(--top) + 1.5rem);
+  left: var(--pad-x);
+  right: var(--pad-x);
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Antonio', sans-serif;
+  font-size: clamp(0.75rem, 1vw, 1rem);
+  letter-spacing: 0.32em;
+  color: rgba(228, 238, 242, 0.62);
+  pointer-events: none;
+}
+
+.story-merch-count {
+  font-variant-numeric: tabular-nums;
+  color: #eef4f6;
+}
+
+.story-merch-info {
+  position: absolute;
+  left: var(--pad-x);
+  bottom: var(--bottom);
+  width: min(30vw, 29rem);
+  animation: merch-item-in 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes merch-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.story-merch-kicker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 0.7rem;
+}
+
+.story-merch-code {
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.68rem, 0.85vw, 0.85rem);
+  letter-spacing: 0.22em;
+  color: rgba(228, 238, 242, 0.65);
+}
+
+.story-merch-badge {
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.64rem, 0.78vw, 0.78rem);
+  letter-spacing: 0.18em;
+  padding: 0.22em 0.65em;
+  border: 1px solid rgba(228, 238, 242, 0.24);
+  color: rgba(228, 238, 242, 0.68);
+}
+
+.story-merch-badge.is-live {
+  border-color: rgba(140, 217, 242, 0.65);
+  color: var(--merch-key);
+  background: rgba(140, 217, 242, 0.08);
+}
+
+.story-merch-cat {
+  display: block;
+  font-family: 'Antonio', sans-serif;
+  font-size: clamp(0.74rem, 0.9vw, 0.9rem);
+  letter-spacing: 0.28em;
+  color: var(--merch-key);
+  margin-bottom: 0.35rem;
+}
+
+.story-merch-title {
+  margin: 0;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(2.1rem, min(4.2vw, 8.2svh), 5.2rem);
+  line-height: 0.92;
+  letter-spacing: 0.01em;
+  color: #f2f8fa;
+}
+
+.story-merch-price {
+  margin: 0.55rem 0 0;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.2rem, 1.8vw, 2.1rem);
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(228, 238, 242, 0.9);
+}
+
+.story-merch-note {
+  margin: 0.75rem 0 0;
+  font-size: clamp(0.8rem, 0.95vw, 0.95rem);
+  line-height: 1.48;
+  letter-spacing: 0.02em;
+  color: rgba(214, 230, 236, 0.7);
+}
+
+.story-merch-cta {
+  margin-top: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75em;
+  padding: 0.65em 1.15em;
+  border: 1px solid rgba(194, 214, 224, 0.35);
+  background: rgba(6, 11, 14, 0.68);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #f1f5f7;
+  text-decoration: none;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  font-size: clamp(0.75rem, 0.6rem + 0.45vw, 1.08rem);
+  letter-spacing: 0.22em;
+  transition: gap 0.3s ease, background 0.3s ease, border-color 0.3s ease;
+}
+
+.story-merch-cta-line {
+  display: inline-block;
+  width: 1.6em;
+  height: 1px;
+  background: var(--merch-key);
+  transition: width 0.3s ease;
+}
+
+.story-merch-cta:hover,
+.story-merch-cta:focus-visible {
+  gap: 1.05em;
+  background: rgba(24, 52, 62, 0.78);
+  border-color: var(--merch-key);
+  outline: none;
+}
+
+.story-merch-cta:hover .story-merch-cta-line,
+.story-merch-cta:focus-visible .story-merch-cta-line {
+  width: 2.8em;
+}
+
+.story-merch-hud {
+  position: absolute;
+  right: var(--pad-x);
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(22vw, 20rem);
+  font-family: 'Antonio', sans-serif;
+  letter-spacing: 0.24em;
+  font-size: clamp(0.72rem, 0.88vw, 0.92rem);
+  color: rgba(228, 238, 242, 0.62);
+}
+
+.story-merch-hud-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.9rem 0;
+  border: 0;
+  border-bottom: 1px solid rgba(228, 238, 242, 0.08);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0.42;
+  transition: opacity 0.35s ease, color 0.35s ease;
+}
+
+.story-merch-hud-btn.is-past {
+  opacity: 0.6;
+}
+
+.story-merch-hud-btn.is-on,
+.story-merch-hud-btn:hover,
+.story-merch-hud-btn:focus-visible {
+  opacity: 1;
+  color: #eef4f6;
+  outline: none;
+}
+
+.story-merch-hud-btn.is-on .about-hud-index {
+  color: var(--merch-key);
+}
+
+.story-merch-hud-btn.is-on .about-hud-bar {
+  width: 2.2rem;
+  background: var(--merch-key);
+}
+
+.story-merch-hud-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.story-merch-store {
+  margin-top: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65em;
+  font-family: 'Courier New', monospace;
+  font-size: 0.84em;
+  letter-spacing: 0.2em;
+  color: var(--merch-key);
+  text-decoration: none;
+  opacity: 0.82;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.story-merch-store:hover,
+.story-merch-store:focus-visible {
+  opacity: 1;
+  transform: translateX(4px);
+  outline: none;
+}
+
+@media (max-width: 767px), (max-aspect-ratio: 1/1) {
+  .story-merch-hud {
+    display: none;
+  }
+
+  .story-merch-info {
+    left: var(--pad-x);
+    right: var(--pad-x);
+    width: auto;
+    bottom: calc(var(--bottom) + 0.4rem);
+  }
+
+  .story-merch-title {
+    font-size: clamp(1.9rem, 9.5vw, 3.2rem);
+  }
+
+  .story-merch-note {
+    display: none;
+  }
+}
