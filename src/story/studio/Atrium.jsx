@@ -1,33 +1,27 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { ATRIUM_FLOOR_Y, HALL_BACK_Z, HALL_FRONT_Z, HALL_SIDE_X, PLINTH_R, PLINTH_H, PLINTH_Z } from './showroomConfig';
 
 // =====================================================================
 // KLINIKA LOST MEDIA — BRUTALIST CONCRETE ATRIUM (S6 Environment)
 // Inspired by Bricelab Concrete Atrium + Young Multi's Lost Media clinic (S0 tile callback).
 //
 // Architectural layout (head-space metres, head centered at 0,0,0):
-//   - Recessed polished dark-concrete gallery floor at y = -0.68 m
-//   - Stepped monolithic concrete plinth directly under Multi (top at y = -0.235 m, R = 0.28 m)
+//   - Recessed polished dark-concrete gallery floor at y = -0.68 m (ends at front slab edge z = +0.92 m)
+//   - Stepped monolithic concrete plinth directly under Multi (top at y = -0.235 m, R = 0.285 m)
 //     with a razor-thin recessed emitter groove and subtle outer side calibration brackets
-//   - Monumental flanking concrete ribs / colonnade (x = +-1.45 m, z = -0.8..-5.2 m)
+//   - Monumental flanking concrete ribs / colonnade (x = +-1.58 m, z = -0.75..-5.1 m)
 //   - Deep concrete ceiling beams framing an overhead skylight oculus at y = +1.72 m
 //   - Back wall (z = -5.75 m) with a recessed dark clinical tile alcove echoing S0's tile room
 //   - Volumetric skylight shaft + slow-drifting atmospheric dust motes
-//
-// Reveal choreography (100% scroll-reversible):
-//   - During visor pull-back (uReveal == 0): pitch-black studio (preserves intimate reflection reveal)
-//   - As the laser scan runs down Multi's head (uReveal 0 -> 1): a 3D architectural scan wave
-//     radiates outward from (0,0,0): crisp turquoise CAD blueprint lines trace the atrium first,
-//     then dissolve smoothly into raw poured concrete as the skylight ramps on.
 // =====================================================================
 
-const FLOOR_Y = -0.68;
+const FLOOR_Y = ATRIUM_FLOOR_Y;
 const CEIL_Y = 1.72;
-const BACK_Z = -5.75;
-const SIDE_X = 2.35;
-const PLINTH_TOP_Y = -0.235;
-const PLINTH_R = 0.285;
+const BACK_Z = HALL_BACK_Z;
+const SIDE_X = HALL_SIDE_X;
+const PLINTH_TOP_Y = FLOOR_Y + PLINTH_H;
 
 // Shared GLSL noise, concrete formwork, S0 clinical tiles, analytical AO, and blueprint-reveal wave
 const GLSL_ATRIUM_COMMON = /* glsl */ `
@@ -316,7 +310,7 @@ const FLOOR_FRAG = /* glsl */ `
     vec3 v = normalize(cameraPosition - vWorld);
 
     // Concentric architectural expansion rings around the central plinth
-    float r = length(vWorld.xz);
+    float r = length(vWorld.xz - vec2(0.0, ${PLINTH_Z.toFixed(3)}));
     float ring1 = 1.0 - smoothstep(0.0, 0.008, abs(r - 0.58));
     float ring2 = 1.0 - smoothstep(0.0, 0.009, abs(r - 1.28));
     float ring3 = 1.0 - smoothstep(0.0, 0.010, abs(r - 2.25));
@@ -332,12 +326,10 @@ const FLOOR_FRAG = /* glsl */ `
 
     vec3 cf = concreteField(vWorld, n);
     float tone = cf.x * (1.0 - rings * 0.42);
-    // Procedural damp/polished concrete roughness variation (creates realistic sheen patches!)
     float wetPatch = smoothstep(0.32, 0.72, fbm2(vWorld.xz * 1.35 + vec2(4.2, -1.9)));
     float microN = fbm2(vWorld.xz * 12.0) - 0.5;
     float rough = mix(0.16, 0.52, wetPatch) + microN * 0.08;
 
-    // Slight surface normal perturbation for glossy concrete micro-ripple
     vec3 bn = normalize(vec3(
       (fbm2(vWorld.xz * 9.0 + vec2(0.05, 0.0)) - fbm2(vWorld.xz * 9.0 - vec2(0.05, 0.0))) * 0.14,
       1.0,
@@ -348,7 +340,6 @@ const FLOOR_FRAG = /* glsl */ `
     float ndv = max(dot(bn, v), 0.0);
     float fres = 0.06 + 0.94 * pow(1.0 - ndv, 4.2);
 
-    // 1. Diffuse concrete base lit by skylight cone
     vec3 skyPos = vec3(0.0, ${CEIL_Y.toFixed(2)}, -0.35);
     vec3 toSky = skyPos - vWorld;
     float dSky = length(toSky);
@@ -359,10 +350,7 @@ const FLOOR_FRAG = /* glsl */ `
     vec3 baseCol = vec3(0.048, 0.058, 0.066) * tone;
     vec3 lit = baseCol * (0.12 + 1.25 * skyPool * skyAtten) * ao;
 
-    // 2. Analytical Reflection Ray across the polished floor
     vec3 refl = reflect(-v, bn);
-
-    // Reflection of the overhead skylight aperture (elongated architectural light strip!)
     float tCeil = (${CEIL_Y.toFixed(2)} - vWorld.y) / max(refl.y, 0.02);
     vec2 hitCeil = vWorld.xz + refl.xz * tCeil;
     float slotX = 1.0 - smoothstep(0.28, 0.78 + rough * 0.9, abs(hitCeil.x));
@@ -370,7 +358,6 @@ const FLOOR_FRAG = /* glsl */ `
     float skyRefl = slotX * slotZ * smoothstep(0.02, 0.25, refl.y);
     lit += vec3(0.45, 0.62, 0.70) * skyRefl * fres * mix(0.85, 0.24, rough) * ao;
 
-    // Reflection of the living particle cloud & plinth emitter right beneath Multi
     float tCloud = (0.02 - vWorld.y) / max(refl.y, 0.02);
     vec2 hitCloud = vWorld.xz + refl.xz * tCloud;
     float cloudDist2 = dot(hitCloud - vec2(0.0, 0.03), hitCloud - vec2(0.0, 0.03));
@@ -378,17 +365,18 @@ const FLOOR_FRAG = /* glsl */ `
     vec3 cloudCol = mix(uRim, uTintCol, 0.22);
     lit += cloudCol * cloudRefl * fres * (0.42 + uEnergy * 0.95) * ao;
 
-    // Subtle specular kick on the recessed floor rings
     vec3 Hsky = normalize(Lsky + v);
     float ringSpec = pow(max(dot(bn, Hsky), 0.0), 42.0);
     lit += uRim * rings * (0.04 + 0.14 * ringSpec) * skyAtten * ao;
 
-    // Soft dark reflections of the flanking concrete ribs (grounds the colonnade!)
     float pillarBand = smoothstep(1.15, 1.55, abs(vWorld.x));
     float ribShadow = 0.5 + 0.5 * cos((vWorld.z + 0.8) * 3.14159265 / 0.65);
     lit *= 1.0 - pillarBand * ribShadow * 0.35;
 
-    // Distance fog
+    // Crisp architectural front-edge chamfer highlight along z = HALL_FRONT_Z
+    float frontRim = 1.0 - smoothstep(0.0, 0.022, abs(${HALL_FRONT_Z.toFixed(3)} - vWorld.z));
+    lit += vec3(0.28, 0.42, 0.48) * frontRim * 0.45;
+
     float fogDist = length(cameraPosition - vWorld);
     float fog = 1.0 - exp(-fogDist * fogDist * 0.016);
     vec3 fogCol = vec3(0.008, 0.012, 0.016) + uRim * 0.008 * uReveal;
@@ -730,11 +718,14 @@ export default function Atrium({ state, studioState }) {
     revealRef.current += (rawRev - revealRef.current) * (1 - Math.exp(-d * 6.5));
     const rev = revealRef.current;
 
-    if (groupRef.current) groupRef.current.visible = rev > 0.001;
-    if (rev <= 0.001) return;
+    const j = s.studioJourney ?? s.dvdJourney ?? 0;
+    // Stay 100% visible while passing the slab edge; only hide at j >= 0.48 when the camera has swept
+    // forward OVER the giant LOST MEDIA cover (z ≈ +0.25) so 0 pixels of the clinic can be seen!
+    if (groupRef.current) groupRef.current.visible = rev > 0.001 && j < 0.48;
+    if (rev <= 0.001 || j >= 0.48) return;
 
-    // Volumetric light & skylight ramp on cleanly behind the blueprint wave
-    const lightOn = THREE.MathUtils.smoothstep(rev, 0.22, 0.92);
+    // Volumetric light & skylight softly settle down once past the floor edge
+    const lightOn = THREE.MathUtils.smoothstep(rev, 0.22, 0.92) * (1 - THREE.MathUtils.smoothstep(j, 0.28, 0.47));
     const energy = studioState.current?.cloudEnergy ?? 0;
 
     mats.shared.uReveal.value = rev;
@@ -748,9 +739,9 @@ export default function Atrium({ state, studioState }) {
 
   const hallH = CEIL_Y - FLOOR_Y;
   const hallMidY = (CEIL_Y + FLOOR_Y) * 0.5;
-  const hallDepth = 7.4;
-  const hallMidZ = BACK_Z + hallDepth * 0.5;
-  const plinthH = PLINTH_TOP_Y - FLOOR_Y;
+  const hallDepth = HALL_FRONT_Z - BACK_Z; // Ends crisply at front cross-section slab edge z = +0.92
+  const hallMidZ = (BACK_Z + HALL_FRONT_Z) * 0.5;
+  const plinthH = PLINTH_H;
 
   return (
     <group ref={groupRef} name="LostMediaAtrium" visible={false}>
@@ -790,45 +781,45 @@ export default function Atrium({ state, studioState }) {
       <mesh position={[0, hallMidY, BACK_Z]} material={mats.backWall}>
         <planeGeometry args={[SIDE_X * 2.2, hallH]} />
       </mesh>
-      {/* Subtle architectural frame slabs around the S0 clinical tile alcove */}
-      <mesh position={[-1.36, 0.34, BACK_Z + 0.08]} material={mats.concrete}>
+      {/* Subtle architectural frame slabs around the S0 clinical tile alcove (2mm clear of BACK_Z = zero Z-fighting) */}
+      <mesh position={[-1.36, 0.34, BACK_Z + 0.094]} material={mats.concrete}>
         <boxGeometry args={[0.32, 2.08, 0.18]} />
       </mesh>
-      <mesh position={[1.36, 0.34, BACK_Z + 0.08]} material={mats.concrete}>
+      <mesh position={[1.36, 0.34, BACK_Z + 0.094]} material={mats.concrete}>
         <boxGeometry args={[0.32, 2.08, 0.18]} />
       </mesh>
-      <mesh position={[0, 1.44, BACK_Z + 0.08]} material={mats.concrete}>
+      <mesh position={[0, 1.44, BACK_Z + 0.094]} material={mats.concrete}>
         <boxGeometry args={[3.04, 0.24, 0.18]} />
       </mesh>
 
-      {/* Brutalist colonnade ribs (left & right) — huge architectural scale & 3D parallax */}
+      {/* Brutalist colonnade ribs (left & right, inset 8mm from floor/ceiling = zero Z-fighting) */}
       {ribZs.map((z, idx) => (
         <React.Fragment key={z}>
           <mesh position={[-1.58 - (idx % 2) * 0.08, hallMidY, z]} material={mats.concrete}>
-            <boxGeometry args={[0.34, hallH, 0.26]} />
+            <boxGeometry args={[0.34, hallH - 0.012, 0.26]} />
           </mesh>
           <mesh position={[1.58 + (idx % 2) * 0.08, hallMidY, z]} material={mats.concrete}>
-            <boxGeometry args={[0.34, hallH, 0.26]} />
+            <boxGeometry args={[0.34, hallH - 0.012, 0.26]} />
           </mesh>
         </React.Fragment>
       ))}
 
-      {/* Overhead brutalist concrete ceiling beams spanning the atrium */}
+      {/* Overhead brutalist concrete ceiling beams spanning the atrium (inset cleanly from side walls) */}
       {beamZs.map((z) => (
-        <mesh key={z} position={[0, CEIL_Y - 0.12, z]} material={mats.concrete}>
-          <boxGeometry args={[SIDE_X * 2.0, 0.24, 0.22]} />
+        <mesh key={z} position={[0, CEIL_Y - 0.125, z]} material={mats.concrete}>
+          <boxGeometry args={[SIDE_X * 2.0 - 0.02, 0.23, 0.22]} />
         </mesh>
       ))}
 
       {/* Central monolithic brutalist plinth directly beneath Multi's particle head */}
-      <group position={[0, 0, 0.035]}>
-        {/* Lower wide concrete base step */}
-        <mesh position={[0, FLOOR_Y + 0.055, 0]} material={mats.plinth}>
-          <cylinderGeometry args={[PLINTH_R + 0.13, PLINTH_R + 0.16, 0.11, 64]} />
+      <group position={[0, 0, PLINTH_Z]}>
+        {/* Lower wide concrete base step (sunk 4mm into slab so bottom cap never Z-fights floor) */}
+        <mesh position={[0, FLOOR_Y + 0.055 - 0.002, 0]} material={mats.plinth}>
+          <cylinderGeometry args={[PLINTH_R + 0.13, PLINTH_R + 0.16, 0.114, 64]} />
         </mesh>
         {/* Main monolithic cylindrical pedestal rising to y = PLINTH_TOP_Y */}
-        <mesh position={[0, FLOOR_Y + plinthH * 0.5, 0]} material={mats.plinth}>
-          <cylinderGeometry args={[PLINTH_R, PLINTH_R + 0.025, plinthH, 64]} />
+        <mesh position={[0, FLOOR_Y + plinthH * 0.5 + 0.002, 0]} material={mats.plinth}>
+          <cylinderGeometry args={[PLINTH_R, PLINTH_R + 0.025, plinthH - 0.004, 64]} />
         </mesh>
         {/* Subtle outer calibration brackets on far left/right (zero obstruction of Multi's face!) */}
         {[-1, 1].map((side) => (

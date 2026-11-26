@@ -1,63 +1,20 @@
-import tshirtUrl from '../assets/tshirt.avif';
-import hoodie1Url from '../assets/hoodie1.avif';
-import hoodie2Url from '../assets/hoodie2.avif';
-
-// Single source of truth for S7: Selected Goods (Archival Lost Media Drop)
-export const MERCH_ITEMS = [
-  {
-    id: 'lost-media-box',
-    index: '01',
-    code: 'YFL // LM-001',
-    category: 'COLLECTOR EDITION',
-    name: 'LOST MEDIA BOX',
-    price: 'PRE-ORDER',
-    status: '11.12.2026',
-    statusType: 'live',
-    note: 'Fizyczne wydanie kolekcjonerskie. Etui archiwalne z lakierem UV + płyta z zapisem klinicznym.',
-    cta: 'ZOBACZ W SKLEPIE YFL',
-    link: 'https://sklep.yfl.pl',
-    is3DBox: true
-  },
-  {
-    id: 'stealth-era-tee',
-    index: '02',
-    code: 'YFL // ARCHIVE-02',
-    category: 'HEAVY COTTON TEE',
-    name: 'STEALTH ERA T-SHIRT',
-    price: '179,00 ZŁ',
-    status: 'WYPRZEDANE',
-    statusType: 'sold',
-    note: 'Czarny oversize z tonalnym wypukłym nadrukiem „THANK GOD 4 LIVING IN YOUNG MULTI ERA”.',
-    cta: 'ZOBACZ DROP',
-    link: 'https://sklep.yfl.pl/products/yfl-basic-tshirt-1',
-    imgUrl: tshirtUrl
-  },
-  {
-    id: 'yfl-patch-hoodie',
-    index: '03',
-    code: 'YFL // ARCHIVE-03',
-    category: 'ZIP HOODIE · PATCHED',
-    name: 'YFL PATCH HOODIE',
-    price: '499,00 ZŁ',
-    status: 'WYPRZEDANE',
-    statusType: 'sold',
-    note: 'Ciężka rozpinana bluza boxy z metalowym zamkiem YFL i tonalnymi naszywkami na rękawach.',
-    cta: 'ZOBACZ DROP',
-    link: 'https://sklep.yfl.pl/products/yfl-limited-hoodie',
-    imgUrl: hoodie1Url
-  },
-  {
-    id: 'yfl-embossed-hoodie',
-    index: '04',
-    code: 'YFL // ARCHIVE-04',
-    category: 'ZIP HOODIE · MINIMAL',
-    name: 'YFL EMBOSSED HOODIE',
-    price: '459,00 ZŁ',
-    status: 'WYPRZEDANE',
-    statusType: 'sold',
-    note: 'Minimalistyczna rozpinana bluza YFL w głębokiej czerni z surowym tłoczeniem i metalowym suwakiem.',
-    cta: 'ZOBACZ DROP',
-    link: 'https://sklep.yfl.pl/products/yfl-hoodie',
-    imgUrl: hoodie2Url
-  }
-];
+// Single source of truth for S7: LOST MEDIA CD (DVD Box Pre-order · sklep.yfl.pl)
+export const LOST_MEDIA_PRODUCT = {
+  id: 'lost-media-cd',
+  code: 'YFL // LM-DVD-01',
+  kicker: 'PRZEDSPRZEDAŻ · 11.12.2026',
+  title: 'LOST MEDIA CD',
+  edition: 'DVD BOX EDITION',
+  price: '59,00 ZŁ',
+  taxNote: 'Z WLICZONYMI PODATKAMI · WYSYŁKA: DRUGI TYDZIEŃ GRUDNIA 2026',
+  note: 'Fizyczne wydanie albumu Young Multiego w kolekcjonerskim pudełku DVD z książeczką kliniczną. Obróć pudełko 360°, aby zobaczyć tył z tracklistą lub otwórz je, aby zajrzeć do środka.',
+  specs: [
+    'DVD BOX · FIZYCZNE WYDANIE CD',
+    'KSIĄŻECZKA (BOOKLET) W ŚRODKU',
+    'WYPRODUKOWANO W POLSCE'
+  ],
+  cta: 'ZAMÓW NA SKLEP.YFL.PL',
+  link: 'https://sklep.yfl.pl',
+  secondaryCta: 'LIMITED BOX (499 ZŁ) I PEŁNY DROP',
+  secondaryLink: 'https://sklep.yfl.pl'
+};

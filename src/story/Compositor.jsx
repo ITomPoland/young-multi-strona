@@ -215,7 +215,14 @@ export default function Compositor({ state, glow = true }) {
         uTextReveal: { value: 0 },
         uTextFront: { value: 0 },
         uDustOn: { value: 0 },
-        uClean: { value: 0 }
+        uClean: { value: 0 },
+        uBreach: { value: 0 },
+        uWarp: { value: 0 },
+        uInvert: { value: 0 },
+        uLoupe: { value: new THREE.Vector4(0.5, 0.5, 0, 0.125) },
+        uRewind: { value: 0 },
+        uPortal: { value: 0 },
+        uHole: { value: new THREE.Vector3(0.5, 0.5, 1) }
       }
     });
     const compScene = new THREE.Scene();
@@ -367,6 +374,8 @@ export default function Compositor({ state, glow = true }) {
   const buf = useMemo(() => new THREE.Vector2(), []);
   const trailState = useRef({ read: null, write: null });
   const textReveal = useRef(0);
+  const textHide = useRef(0);
+  const loupeStr = useRef(0);
   const worldWarm = useRef(false);
   const warm = useRef({ done: 0, busy: false });
 
@@ -388,7 +397,12 @@ export default function Compositor({ state, glow = true }) {
     }
 
     const tr = s.tr;
-    const heroOn = tr < 0.5;
+    const studio = s.studioOn && s.studio;
+    // the hero layers belong to the world on screen: not while the studio has the screen (the
+    // CD exit already shows the first room, but only through the hole)
+    const heroOn = tr < 0.5 && !studio;
+    // S8: ...except inside the CD's centre hole, which shows the live hero frame
+    const portal = studio && tr < 0.5 ? s.portal ?? 0 : 0;
     const time = frame.clock.elapsedTime;
     const dpr = gl.getPixelRatio();
 
@@ -419,10 +433,13 @@ export default function Compositor({ state, glow = true }) {
     if (p.activeFrames > 0) p.activeFrames--;
 
     textReveal.current += ((s.heroStart ? 1 : 0) - textReveal.current) * 0.06;
+    // S8: the type stays down in the echo; after a jump back to the top it rises again
+    // (scroll-driven in the echo; a soft rise after a jump to the top)
+    textHide.current += ((s.echoText ?? 0) - textHide.current) * (s.vh > 100 ? 0.3 : 0.06);
 
     // --- 1. trail ---
     const ts = trailState.current;
-    if (heroOn) {
+    if (heroOn || portal > 0) {
       if (!ts.write) ts.write = targets.trailA;
       const tu = passes.trailMat.uniforms;
       tu.u_prevTrail.value = ts.read ? ts.read.texture : targets.trailInit;
@@ -439,14 +456,15 @@ export default function Compositor({ state, glow = true }) {
     }
 
     // --- dust uniforms (both copies) ---
-    const dustOn = supportsDust && tr > 0.01 && tr < 0.5;
+    const dustOn = supportsDust && heroOn && tr > 0.01;
     const du = passes.dustUniforms;
     du.tVideo.value = mediaTex;
     du.uRes.value.copy(buf);
     du.uTr.value = tr;
     du.uTime.value = time;
     du.uDpr.value = dpr;
-    passes.dustWall.visible = dustOn;
+    // (the settled dust is part of the world: also seen through the CD hole)
+    passes.dustWall.visible = supportsDust && tr > 0.01 && tr < 0.5;
 
     // --- the warm-up (once the studio is complete; again if it changes) ---
     const W = warm.current;
@@ -461,7 +479,6 @@ export default function Compositor({ state, glow = true }) {
     }
 
     // --- 2. the world (from the reveal on: into the lens, and the studio onto the screen) ---
-    const studio = s.studioOn && s.studio;
     // the lens's target is first bound long before the seam (its framebuffer allocated then)
     if (!worldWarm.current && s.studio) {
       worldWarm.current = true;
@@ -520,10 +537,34 @@ export default function Compositor({ state, glow = true }) {
     u.tTrail.value = ts.read ? ts.read.texture : targets.trailInit;
     u.tVideo.value = mediaTex;
     u.uParallax.value.set(p.parallaxX, p.parallaxY);
-    u.uTextReveal.value = textReveal.current;
+    u.uTextReveal.value = textReveal.current * (1 - textHide.current);
     u.uTextFront.value = isTextFront(size.width, size.height) ? 1 : 0;
     u.uDustOn.value = dustOn ? 1 : 0;
     u.uClean.value = s.clean;
+    u.uBreach.value = s.breach ?? 0;
+    u.uWarp.value = s.warp ?? 0;
+    u.uInvert.value = s.bside ?? 0;
+    u.uRewind.value = s.rewind ?? 0;
+    u.uPortal.value = portal;
+    if (s.hole) u.uHole.value.set(s.hole[0], s.hole[1], s.hole[2]);
+
+    // 3D Crystal Magnifying Loupe: active on desktop over the centered LOST MEDIA DVD Box stage
+    // Automatically retracts near side HUD flanks, top header, bottom floating dock, while dragging, or during CD exit
+    const wide = size.width / Math.max(size.height, 1) > 1.05;
+    const inStage =
+      !s.touch &&
+      (s.studioJourney ?? s.dvdJourney ?? 0) > 0.78 &&
+      (s.studioExit ?? s.cdExit ?? 0) < 0.04 &&
+      (s.black ?? 0) < 0.25 &&
+      p.initialized &&
+      !s.merchDrag?.active &&
+      p.x > (wide ? 0.24 : 0.08) &&
+      p.x < (wide ? 0.76 : 0.92) &&
+      p.y > 0.18 &&
+      p.y < 0.84;
+    const loupeTarget = inStage ? 1 : 0;
+    loupeStr.current += (loupeTarget - loupeStr.current) * 0.14;
+    u.uLoupe.value.set(p.x, p.y, loupeStr.current, 0.115);
 
     gl.setRenderTarget(null);
     gl.render(passes.compScene, passes.orthoCam);

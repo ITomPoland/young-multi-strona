@@ -18,6 +18,18 @@ export function createStoryState() {
     burst: 0,
     single: 0,
     turn: 0,
+    plunge: 0, // derived 0 -> 1 edge-pass progress (used for Atrium hide)
+    dvdJourney: 0, // S6->S7 ONE single continuous scroll journey 0 -> 1 (zero brake/stop!)
+    studioJourney: 0, // spring-smoothed continuous journey shared by Studio camera & LostMediaBox
+    dvdPull: 0, // derived 0 -> 1 pullback readiness (loupe, drag, UI)
+    cdExit: 0, // S7->S8 VFX sequence: case opens -> CD ejects -> laser scan -> dive through CD center hole (0 -> 1)
+    studioExit: 0, // spring-smoothed cdExit shared by camera, CD, laser, warp tunnel & compositor VFX
+    warp: 0, // radial zoom-blur + prismatic CD dispersion intensity during CD center-hole breach (0 -> 1)
+    breach: 0, // subtle edge-pass chromatic accent (0 -> 1 -> 0)
+    bside: 0, // kept 0 for consistent dark Lost Media film grade
+    dvdFlip: 0, // 0 = front lab cover, 1 = flipped 180° to official back cover (tracklist & warnings)
+    dvdOpen: 0, // 0 = closed DVD case, 1 = hinged cover swung open revealing CD + booklet
+    merchDrag: { active: false, dx: 0, dy: 0 }, // 360° drag-to-inspect rotation offset in S7
     black: 0,
     hover: false,
     // touch screens have no hover: the clean cover is revealed automatically in the hold

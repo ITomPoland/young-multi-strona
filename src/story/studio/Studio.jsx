@@ -6,10 +6,10 @@ import { makeHeadGeometry, makeNeckGeometry, makeGlasses, HEAD_TOP, HEAD_BOTTOM,
 import { loadHeadAsset, HEAD_FIT, PHOTO_FIT } from './headAsset';
 import { ABOUT } from '../story.config';
 import { makeShapes, PAD_FEATURE_Z } from './aboutShapes';
-import { createParticleSim, packHeadParticles, packShapeTexture, SHAPE_CENTER, BOX_DIMS } from './particleSim';
+import { createParticleSim, packHeadParticles, packShapeTexture, SHAPE_CENTER } from './particleSim';
 import Atrium from './Atrium';
-import LostMediaBox from './LostMediaBox';
-import MerchShowcase from './MerchShowcase';
+import InvertedShowroom from './InvertedShowroom';
+import { ATRIUM_FLOOR_Y, SHOWROOM_FLOOR_Y, DVD_CENTER_Z } from './showroomConfig';
 import logoUrl from '../../assets/logoyflbiale.avif';
 
 // =====================================================================
@@ -516,6 +516,8 @@ function sampleDots(meshes, count) {
 }
 
 const _lens = new THREE.Vector3();
+const _holeC = new THREE.Vector3();
+const _holeR = new THREE.Vector3();
 const _n = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _pivot = new THREE.Vector3();
@@ -533,19 +535,32 @@ const _fitPos = new THREE.Vector3();
 const _fitQuat = new THREE.Quaternion();
 const _fitEuler = new THREE.Euler();
 const _fitScale = new THREE.Vector3();
+const _atriumCam = new THREE.Vector3();
+const _atriumPivot = new THREE.Vector3();
+const _camK1 = new THREE.Vector3();
+const _camK2 = new THREE.Vector3();
+const _camK3 = new THREE.Vector3();
+const _camK4 = new THREE.Vector3();
+const _lookK1 = new THREE.Vector3();
+const _lookK2 = new THREE.Vector3();
+const _lookK3 = new THREE.Vector3();
+const _lookK4 = new THREE.Vector3();
+// Zero-allocation centripetal Catmull-Rom 3D splines: camera sweeps through every keyframe
+// (Atrium -> slab edge -> close over the LOST MEDIA cover -> continuous pullback) with ZERO stop!
+const _camCurve = new THREE.CatmullRomCurve3([_atriumCam, _camK1, _camK2, _camK3, _camK4], false, 'centripetal');
+const _lookCurve = new THREE.CatmullRomCurve3([_atriumPivot, _lookK1, _lookK2, _lookK3, _lookK4], false, 'centripetal');
 
 export default function Studio({ state }) {
   const { gl, size } = useThree();
   const studio = useMemo(() => {
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.002, 20);
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.002, 85);
     return { scene, camera };
   }, []);
   const headGroup = useRef();
   const studioState = useRef({ cloudEnergy: 0 });
-  const boxPoseRef = useRef({ rx: 0.07, ry: -0.30 });
   const follow = useRef({
-    u: 0, v: 0, yaw: 0, pitch: 0, m: 0, mv: 0,
+    u: 0, v: 0, journey: 0, journeyV: 0, exit: 0, exitV: 0, yaw: 0, pitch: 0, m: 0, mv: 0,
     cx: 0, cy: 0, pointerSeen: false, cursorOn: 0, cursorSpd: 0,
     hasHit: false, prevHit: new THREE.Vector3(), swipeVel: new THREE.Vector3()
   });
@@ -654,7 +669,7 @@ export default function Studio({ state }) {
           tTarget2: { value: sim?.textures.tTarget2 ?? null },
           tTarget4: { value: sim?.textures.tTarget4 ?? null },
           tMeta: { value: sim?.textures.tMeta ?? null },
-          uBoxScanY: { value: -BOX_DIMS.h },
+          uBoxScanY: { value: -1 },
           uBoxScanOn: { value: 0 },
           uTime: { value: 0 },
           uDpr: { value: 1 },
@@ -859,6 +874,10 @@ export default function Studio({ state }) {
       wasOn.current = true;
       F.u = s.revPull;
       F.v = 0;
+      F.journey = s.dvdJourney ?? 0;
+      F.journeyV = 0;
+      F.exit = s.cdExit ?? 0;
+      F.exitV = 0;
       F.yaw = -0.24 * (1 - smooth(0.55, 1.0, F.u));
       F.pitch = 0;
       F.m = ABOUT.morph(s.vh ?? 0);
@@ -872,27 +891,43 @@ export default function Studio({ state }) {
 
     // the scroll gives a target; the camera follows it on a spring (inertia, never a rail)
     const W = 7;
+    const WJ = 6.2;
+    const WE = 6.6;
     const n = 4;
+    const targetJourney = s.dvdJourney ?? 0;
+    const targetExit = s.cdExit ?? 0;
     for (let k = 0; k < n; k++) {
       const acc = (s.revPull - F.u) * W * W - 2 * 0.9 * W * F.v;
       F.v += acc * (d / n);
       F.u += F.v * (d / n);
+      // ONE critically damped spring for the entire S6->S7 journey = zero mid-flight hitch or stop!
+      const jAcc = (targetJourney - F.journey) * WJ * WJ - 2 * 0.96 * WJ * F.journeyV;
+      F.journeyV += jAcc * (d / n);
+      F.journey += F.journeyV * (d / n);
+      // Smooth spring for S7->S8 Hidden Track #21 CD VFX exit
+      const eAcc = (targetExit - F.exit) * WE * WE - 2 * 0.94 * WE * F.exitV;
+      F.exitV += eAcc * (d / n);
+      F.exit += F.exitV * (d / n);
     }
     const u = Math.min(Math.max(F.u, 0), 1.03);
+    const j = clamp01(F.journey);
+    const ex = clamp01(F.exit);
     s.studioU = F.u; // the director hands the screen back to the world only once this is ~0
+    s.studioJourney = j; // shared spring-smoothed journey so LostMediaBox & Atrium stay 100% locked to the camera
+    s.studioExit = ex; // shared spring-smoothed exit so camera, CD turbine, laser & warp tunnel lock 1:1
+    // the warp eases off as the hole fills the frame: the room behind it arrives sharp
+    s.warp = smooth(0.28, 0.90, ex) * (1 - smooth(0.93, 0.99, ex));
 
     // the head: looks off to its right, turns to the camera as it arrives; in the hold it
-    // follows the cursor; in S7 (Collector's Box) settles level so the Box owns its own 3/4 tilt
+    // follows the cursor; settles quietly as camera dives beneath the floor
     const p = s.pointer;
     const hold = s.revHold ?? 0;
-    const boxMorph = s.boxMorph ?? 0;
-    const boxScan = s.boxScan ?? 0;
-    const boxExplode = s.boxExplode ?? 0;
-    const headFollow = hold * (1 - boxMorph);
+    const headFollow = hold * (1 - smooth(0.0, 0.14, j));
     const k = 1 - Math.exp(-d * 3);
     F.yaw += (-0.24 * (1 - smooth(0.55, 1.0, u)) + p.sx * 0.28 * headFollow - F.yaw) * k;
     F.pitch += (-p.sy * 0.12 * headFollow - F.pitch) * k;
     const hg = headGroup.current;
+    hg.visible = j < 0.48;
     hg.rotation.set(F.pitch, F.yaw + Math.sin(time * 0.31) * 0.012 * headFollow, 0, 'YXZ');
     hg.updateMatrixWorld(true);
 
@@ -907,40 +942,110 @@ export default function Studio({ state }) {
     const aspect = size.width / Math.max(size.height, 1);
     const wide = clamp01((aspect - 0.9) / 0.6);
 
-    // the pull-back is anchored on the middle of the visor: it stays at the centre of the
-    // frame the whole way back (the camera only ever turns round it), and only at the very
-    // end does the frame ease aside: the head to the left on wide screens (room for the text
-    // on the right), the head up on tall ones
-    // (in the hold the camera opens out slightly into the brutalist atrium so the plinth,
-    // volumetric skylight, and colonnade parallax cleanly round Multi's living particle head)
-    const chapterArc = Math.sin(F.m * 1.45) * 0.085 * hold * wide;
+    // === (A) ATRIUM CAMERA POSE (S6: visor pull-back -> concrete atrium hold) ===
+    const chapterArc = Math.sin(F.m * 1.45) * 0.085 * hold * wide * (1 - smooth(0.0, 0.18, j));
     const yaw =
       THREE.MathUtils.lerp(lensYaw, END_YAW * (1 - 0.72 * hold), smooth(0.2, 1.0, u)) +
       chapterArc +
-      p.sx * (0.095 * wide + 0.05 * (1 - wide)) * hold;
-    const pitch = THREE.MathUtils.lerp(0, END_PITCH, smooth(0.25, 1.0, u)) + p.sy * 0.045 * hold;
+      p.sx * (0.095 * wide + 0.05 * (1 - wide)) * headFollow;
+    const pitch = THREE.MathUtils.lerp(0, END_PITCH, smooth(0.25, 1.0, u)) + p.sy * 0.045 * headFollow;
     _dir.set(Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
     _right.set(Math.cos(yaw), 0, -Math.sin(yaw));
     const settle = smooth(0.68, 1.0, u);
-    // (on tall screens a nudge the other way: the 3/4 view swings the head right of the anchor)
-    // ("o mnie", the hold: back to the middle, the read-out goes round it)
-    _pivot.copy(_lens).addScaledVector(_right, (0.13 * wide + 0.075 * (1 - wide)) * settle * (1 - hold) + 0.02 * hold);
-    _pivot.y -= (0.03 * wide + 0.11 * (1 - wide)) * settle + 0.07 * (1 - wide) * hold + 0.018 * wide * hold;
-    // on a tall screen the long lens is narrow: end further back so the head fits across;
-    // in HOLD breathe slightly wider to frame the monolithic plinth & colonnade
+    _atriumPivot.copy(_lens).addScaledVector(_right, (0.13 * wide + 0.075 * (1 - wide)) * settle * (1 - hold) + 0.02 * hold);
+    _atriumPivot.y -= (0.03 * wide + 0.11 * (1 - wide)) * settle + 0.07 * (1 - wide) * hold + 0.018 * wide * hold;
     const d1 = D1 * Math.pow(Math.max(1, 0.9 / aspect), 0.8) * (1 + 0.15 * hold * wide);
     const dist = D0 * Math.pow(d1 / D0, u);
-    cam.position.copy(_pivot).addScaledVector(_dir, dist);
-    // handheld: a slight drift once off the glass
-    const drift = smooth(0.3, 1.0, u);
-    cam.position.x += Math.sin(time * 0.43) * 0.003 * drift;
-    cam.position.y += Math.sin(time * 0.37 + 1.2) * 0.0022 * drift;
-    cam.up.set(0, 1, 0);
-    cam.lookAt(_pivot);
-    // a roll that comes and goes in flight (none at the seam, none at the end)
-    cam.rotateZ(Math.sin(Math.PI * smooth(0.04, 0.9, u)) * 4 * DEG);
-    // dolly zoom: wide on the glass, long lens on the head, gently breathing wider into the atrium
-    cam.fov = THREE.MathUtils.lerp(FOV0, 29, smooth(0.0, 0.9, u)) + 5.0 * hold * wide;
+    _atriumCam.copy(_atriumPivot).addScaledVector(_dir, dist);
+    const drift = smooth(0.3, 1.0, u) * (1 - smooth(0.0, 0.16, j));
+    _atriumCam.x += Math.sin(time * 0.43) * 0.003 * drift;
+    _atriumCam.y += Math.sin(time * 0.37 + 1.2) * 0.0022 * drift;
+    const atriumFov = THREE.MathUtils.lerp(FOV0, 29, smooth(0.0, 0.9, u)) + 5.0 * hold * wide;
+
+    if (j <= 0.0004) {
+      cam.position.copy(_atriumCam);
+      cam.up.set(0, 1, 0);
+      cam.lookAt(_atriumPivot);
+      cam.rotateZ(Math.sin(Math.PI * smooth(0.04, 0.9, u)) * 4 * DEG);
+      cam.fov = atriumFov;
+    } else {
+      // === (B) ONE CONTINUOUS 5-POINT CATMULL-ROM 3D FLIGHT (ZERO POP-OUT, ZERO STOP!) ===
+      // 1. j=0.00 -> 0.25: drops past the 36 cm black DVD edge (z = +0.92), rolling 180° immediately.
+      // 2. j=0.25 -> 0.50: sweeps FORWARD & CLOSE over the center of the giant flat LOST MEDIA cover
+      //    (z = +0.20 < +0.92), so the solid cover 100% occludes the clinic behind it — zero visible pop!
+      // 3. j=0.50 -> 1.00: in the same uninterrupted arc, pulls smoothly back & up into dead-center showcase!
+      const slabMidY = (ATRIUM_FLOOR_Y + SHOWROOM_FLOOR_Y) * 0.5;
+      const settleOrb = smooth(0.65, 1.0, j);
+
+      // Final hero framing: DVD Box stands DEAD CENTER (x = 0) with clean optical balance above the bottom Floating Dock.
+      // In inverted showroom space (rotZ = PI): world -X = screen-RIGHT, world -Y = screen-UP.
+      const finalDist = 15.6 * Math.pow(Math.max(1, 0.92 / aspect), 0.72);
+      const boxWorldY = SHOWROOM_FLOOR_Y - 0.20;
+      const dockOffset = 0.24 * wide + 0.52 * (1 - wide); // lifts the centered box slightly above the bottom dock
+      const orbX = (-p.sx * (1.05 * wide + 0.35 * (1 - wide)) + Math.sin(time * 0.34) * 0.08) * settleOrb;
+      const orbY = (-p.sy * 0.52 + Math.sin(time * 0.28 + 1.1) * 0.06) * settleOrb;
+
+      _camK1.set(0, slabMidY - 0.10, 2.20);
+      _camK2.set(0, SHOWROOM_FLOOR_Y - 1.16, 0.20); // Close macro sweep OVER the giant cover (0% clinic visible!)
+      _camK3.set(0, SHOWROOM_FLOOR_Y - 2.35, 5.40); // Smooth upward & backward pullback arc
+      _camK4.set(orbX, boxWorldY + dockOffset + orbY, DVD_CENTER_Z + finalDist);
+
+      _lookK1.set(0, slabMidY, -0.45);
+      _lookK2.set(0, SHOWROOM_FLOOR_Y, -2.55); // Aimed straight across the middle of the giant LOST MEDIA cover
+      _lookK3.set(0, SHOWROOM_FLOOR_Y - 0.15, DVD_CENTER_Z);
+      _lookK4.set(0, boxWorldY + dockOffset, DVD_CENTER_Z);
+
+      _camCurve.getPoint(j, cam.position);
+      _lookCurve.getPoint(j, _pivot);
+
+      // === (C) S7 -> S8 HIDDEN TRACK #21: HYPER-ACCELERATED DIVE THROUGH THE SPINNING CD CENTER HOLE! ===
+      // Camera aligns dead-center on the ejected spinning CD (x=0, y=boxWorldY, z=DVD_CENTER_Z+4.80),
+      // builds turbine micro-shake + barrel roll + dolly-zoom FOV (34° -> 66°), and punches straight
+      // through the laser-lit center hole as the Contact iris aperture expands in exact 1:1 sync!
+      let exitRoll = 0;
+      let exitFov = 0;
+      if (ex > 0.0005) {
+        const alignT = smooth(0.05, 0.48, ex);
+        const diveT = Math.pow(smooth(0.16, 1.0, ex), 1.65);
+        // the hole's real centre (LostMediaBox publishes it): the camera ends 10 cm in front of
+        // it, on its axis, where the hole (r 25 cm) fills the whole frame. It never passes
+        // through: from there the director hands the screen to the room the hole shows (S8).
+        const hole = s.cdHole;
+        const discWorldZ = hole ? hole.z : DVD_CENTER_Z + 4.80;
+        const holeX = hole ? hole.x : 0;
+        const holeY = hole ? hole.y : boxWorldY;
+        const targetCamZ = discWorldZ + 0.10;
+
+        const shakeAmt = Math.sin(ex * Math.PI) * 0.022 * smooth(0.25, 0.7, ex);
+        const shX = Math.sin(time * 47.0) * Math.cos(time * 19.3) * shakeAmt;
+        const shY = Math.cos(time * 41.0 + 1.1) * Math.sin(time * 17.7) * shakeAmt;
+
+        // (the shake dies out on the last stretch: the hole is a hand's width away)
+        const calm = 1 - smooth(0.8, 0.97, ex);
+        cam.position.x = THREE.MathUtils.lerp(cam.position.x, holeX, alignT) + shX * calm;
+        cam.position.y = THREE.MathUtils.lerp(cam.position.y, holeY, alignT) + shY * calm;
+        cam.position.z = THREE.MathUtils.lerp(cam.position.z, targetCamZ, diveT);
+
+        _pivot.x = THREE.MathUtils.lerp(_pivot.x, holeX, alignT);
+        _pivot.y = THREE.MathUtils.lerp(_pivot.y, holeY, alignT);
+        _pivot.z = THREE.MathUtils.lerp(_pivot.z, discWorldZ - 4.0, diveT);
+
+        exitRoll = smooth(0.22, 1.0, ex) * 0.68; // kinetic 39° turbine roll into the portal!
+        exitFov = diveT * 32.0; // dramatic dolly-zoom warp FOV up to 66°!
+      }
+
+      // Immediate continuous 180° barrel roll right as descent starts (90° at the slab edge, 180° over the cover!)
+      const roll = smooth(0.02, 0.46, j) * Math.PI + exitRoll;
+      cam.up.set(Math.sin(roll), Math.cos(roll), 0);
+      cam.lookAt(_pivot);
+
+      const passBreath = Math.sin(j * Math.PI) * 5.2;
+      cam.fov = THREE.MathUtils.lerp(atriumFov, 34.0, smooth(0.08, 0.95, j)) + passBreath + exitFov;
+    }
+
+    // Dynamic near plane: 0.002 m at visor -> 0.06 m in Atrium & cover -> 0.22 m far hold -> 0.04 m during CD hole breach!
+    const holdNear = THREE.MathUtils.lerp(THREE.MathUtils.lerp(0.002, 0.06, smooth(0.5, 0.85, u)), 0.22, smooth(0.52, 0.85, j));
+    cam.near = THREE.MathUtils.lerp(holdNear, 0.04, smooth(0.32, 0.72, ex));
     cam.aspect = aspect;
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
@@ -983,10 +1088,21 @@ export default function Studio({ state }) {
     // ...until the scan has taken the glass: then the world is not drawn at all
     const scanYNow = THREE.MathUtils.lerp(scanRange.current[0], scanRange.current[1], s.revScan);
     s.lensWorld = s.revScan > 0 && scanYNow < glassBottom.current - 0.01 ? 0 : worldK;
+
     // the reflection swims a little with the viewing angle (lens space)
     _toCam.copy(cam.position).sub(_lens).normalize();
     const lx = _toCam.dot(_right.set(Math.cos(lensYaw), 0, -Math.sin(lensYaw)));
     lu.uSwim.value.set(-lx * 0.08, -_toCam.y * 0.08).multiplyScalar(lu.uK.value);
+
+    // S8: where the CD hole is on screen, and how far the hero frame inside it is zoomed out
+    // (its short side fits the hole while it is small; 1:1 once the hole outgrows that)
+    if (s.cdHole && (s.portal ?? 0) > 0) {
+      _holeC.copy(s.cdHole).project(cam);
+      _holeR.setFromMatrixColumn(cam.matrixWorld, 0).multiplyScalar(0.25).add(s.cdHole).project(cam);
+      const rPx = Math.hypot((_holeR.x - _holeC.x) * 0.5 * buf.x, (_holeR.y - _holeC.y) * 0.5 * buf.y);
+      const rCover = 0.5 * Math.min(buf.x, buf.y) * 1.15;
+      s.hole = [_holeC.x * 0.5 + 0.5, _holeC.y * 0.5 + 0.5, Math.max(1, rCover / Math.max(rPx, 1))];
+    }
 
     // the photo's projection (live in dev: window.__photoFit)
     mats.photo.uPhotoFit.value.set(PHOTO_FIT.cx, PHOTO_FIT.cy, PHOTO_FIT.k, PHOTO_FIT.size);
@@ -1042,27 +1158,17 @@ export default function Studio({ state }) {
     F.prevHit.copy(_hit);
 
     const swipeSpd = F.swipeVel.length();
-    const targetCursorOn = (F.pointerSeen ? Math.max(hold, scanOn * 0.45) : 0) * (1 - smooth(0.0, 0.35, boxScan));
+    const targetCursorOn = (F.pointerSeen ? Math.max(hold, scanOn * 0.45) : 0) * (1 - smooth(0.0, 0.14, j));
     F.cursorOn += (targetCursorOn - F.cursorOn) * (1 - Math.exp(-d * 6));
     const normSpd = Math.min(swipeSpd / 0.9, 1.35);
     F.cursorSpd += (normSpd - F.cursorSpd) * (1 - Math.exp(-d * (normSpd > F.cursorSpd ? 16 : 4)));
 
-    // Shared Collector's Box 3/4 pose (pixel-locked between GPGPU particles and solid LostMediaBox)
-    const bp = boxPoseRef.current;
-    const targetRx = 0.065 + Math.sin(time * 0.5) * 0.022 - p.sy * 0.15 * boxMorph;
-    const targetRy = -0.32 + Math.sin(time * 0.36) * 0.065 + p.sx * 0.28 * boxMorph + boxExplode * 0.16;
-    const bpK = 1 - Math.exp(-d * 5.5);
-    bp.rx += (targetRx - bp.rx) * bpK;
-    bp.ry += (targetRy - bp.ry) * bpK;
-
-    // Reverse turquoise laser scan sweeping UP the Collector's Box (particles -> solid textured box)
-    const boxScanY = THREE.MathUtils.lerp(-BOX_DIMS.h * 0.5 - 0.014, BOX_DIMS.h * 0.5 + 0.026, boxScan);
-    const boxScanOn = boxScan > 0.002 ? 1 : 0;
-    du.uBoxScanY.value = boxScanY;
-    du.uBoxScanOn.value = boxScanOn;
+    // No reverse box scan in S7 anymore — S7 lives in the Inverted Alabaster Showroom beneath the floor!
+    du.uBoxScanY.value = -1;
+    du.uBoxScanOn.value = 0;
 
     // Live kinetic cloud energy drives reactive bounce light on the plinth, floor reflections & ribs
-    const scanPulse = s.revScan * (1 - s.revScan) * 2.2 + boxScan * (1 - boxScan) * 2.6;
+    const scanPulse = s.revScan * (1 - s.revScan) * 2.2;
     const rawCloudEnergy = Math.min(1.0, F.cursorSpd * 0.55 + Math.min(Math.abs(F.mv), 1.5) * 0.45 + scanPulse * 0.6);
     studioState.current.cloudEnergy += (rawCloudEnergy - studioState.current.cloudEnergy) * (1 - Math.exp(-d * 6));
 
@@ -1074,7 +1180,6 @@ export default function Studio({ state }) {
       sh.uMorph.value = F.m;
       sh.uScanY.value = scanY;
       sh.uScanOn.value = scanOn;
-      sh.uBoxRot.value.set(bp.rx, bp.ry);
       vu.uHold.value = hold;
       vu.uRayO.value.copy(_rayO);
       vu.uRayD.value.copy(_rayD);
@@ -1084,8 +1189,8 @@ export default function Studio({ state }) {
       vu.uMorphVel.value = Math.abs(F.mv);
 
       const needReset = simNeedsReset.current || jumped;
-      // Pause GPGPU stepping once 100% of particles have fused into the solid Collector's Box
-      if (boxScan < 0.995 || needReset) {
+      // Pause GPGPU stepping once the camera has swept over the DVD cover and hidden the clinic
+      if (j < 0.48 || needReset) {
         sim.step(gl, d, needReset);
         simNeedsReset.current = false;
       }
@@ -1101,8 +1206,11 @@ export default function Studio({ state }) {
         <planeGeometry args={[18, 12]} />
       </mesh>
 
-      {/* Klinika Lost Media — Brutalist Concrete Atrium (materializes via Blueprint wave on scan) */}
+      {/* Klinika Lost Media — Brutalist Concrete Atrium (S6, above y = -0.68) */}
       <Atrium state={state} studioState={studioState} />
+
+      {/* B-Side Archive — Inverted Alabaster Showroom (S7, bolted upside-down below y = -0.68!) */}
+      <InvertedShowroom state={state} />
 
       <group ref={headGroup}>
         {asset ? (
@@ -1122,9 +1230,6 @@ export default function Studio({ state }) {
           </group>
         )}
         {sim && <points geometry={sim.pointsGeo} material={mats.dots} frustumCulled={false} renderOrder={2} />}
-        {/* S7: Physical textured LOST MEDIA Collector's Box + Iridescent Disc + Selected Goods garments */}
-        <LostMediaBox state={state} boxPoseRef={boxPoseRef} />
-        <MerchShowcase state={state} />
         <primitive object={glasses.group} visible={!asset?.visor} />
       </group>
     </>,

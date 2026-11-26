@@ -37,3 +37,22 @@ export function unlockScroll() {
     window.removeEventListener('keydown', blockKeys);
   }
 }
+
+// Instant jump (no smooth glide): Lenis is told too, or it would ease back to its old target.
+export function jumpTo(y) {
+  if (lenis) lenis.scrollTo(y, { immediate: true, force: true });
+  else window.scrollTo({ top: y, behavior: 'auto' });
+}
+
+// Move the page by dy WITHOUT losing the glide in progress (the endless loop's wrap): the
+// same frame is shown before and after, and Lenis keeps easing toward its (shifted) target.
+export function shiftScroll(dy) {
+  if (lenis) {
+    const remaining = lenis.targetScroll - lenis.animatedScroll;
+    const y = lenis.animatedScroll + dy;
+    lenis.scrollTo(y, { immediate: true, force: true });
+    if (Math.abs(remaining) > 0.5) lenis.scrollTo(y + remaining, { force: true });
+  } else {
+    window.scrollTo({ top: window.scrollY + dy, behavior: 'auto' });
+  }
+}

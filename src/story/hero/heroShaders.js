@@ -181,6 +181,13 @@ export const COMPOSITE_FRAG = /* glsl */ `
   uniform float uTextFront; // 0 = type behind Multi (landscape), 1 = in front (portrait / phones)
   uniform float uDustOn;
   uniform float uClean;     // 0 = dithered story look, 1 = clean image (album ring)
+  uniform float uBreach;    // 0..1 floor-slab cross-section chromatic wipe during S6->S7
+  uniform float uWarp;      // 0..1 radial optical zoom-blur & prismatic CD dispersion during S7->S8 CD breach
+  uniform float uInvert;    // 0 = dark film grade, 1 = infinite alabaster B-Side Construct grade
+  uniform vec4 uLoupe;      // xy = smoothed cursor UV (0..1), z = active strength (0..1), w = radius (screen-H units)
+  uniform float uRewind;    // S8: the contact turning into the type: VHS search noise
+  uniform float uPortal;    // S8: the CD hole (studio pixels with alpha 0.75) shows the hero frame
+  uniform vec3 uHole;       // S8: hole centre (screen UV) + zoom-out of the hero frame inside it (1 = 1:1)
   varying vec2 vUv;
 
   const float ZERO = 128.0 / 255.0;
@@ -216,8 +223,56 @@ export const COMPOSITE_FRAG = /* glsl */ `
     float cellPx = max(2.2, 2.7 * uDpr);
     vec2 cellCoord = floor(gl_FragCoord.xy / cellPx);
     vec2 snappedUv = (cellCoord + 0.5) * cellPx / uRes;
-    vec4 centerTex = texture2D(tScene, vUv);
     float aspect = uRes.x / max(uRes.y, 1.0);
+
+    // === SUBTLE ARCHITECTURAL FLOOR-SLAB WIPE ACCENT (S6 -> S7) + OPTICAL CD WARP VFX (S7 -> S8) ===
+    vec2 sampleUv = vUv;
+    vec4 centerTex = texture2D(tScene, vUv);
+    if (uWarp > 0.002) {
+      // Radial hyperspace zoom-blur + prismatic polycarbonate CD RGB dispersion from the center aperture!
+      vec2 toC = vUv - vec2(0.5);
+      float radDist = length(toC * vec2(aspect, 1.0));
+      float edgeW = smoothstep(0.06, 0.72, radDist);
+      vec3 acc = vec3(0.0);
+      float wSum = 0.0;
+      for (int i = 0; i < 6; i++) {
+        float fi = float(i) / 5.0;
+        float w = 1.0 - fi * 0.55;
+        vec2 uTap = clamp(vUv - toC * (fi * 0.14 * uWarp * edgeW), vec2(0.001), vec2(0.999));
+        vec2 ca = toC * (0.024 * uWarp * edgeW * (0.5 + fi));
+        acc.r += texture2D(tScene, clamp(uTap + ca, vec2(0.001), vec2(0.999))).r * w;
+        acc.g += texture2D(tScene, uTap).g * w;
+        acc.b += texture2D(tScene, clamp(uTap - ca, vec2(0.001), vec2(0.999))).b * w;
+        wSum += w;
+      }
+      // Subtle cyan + crimson laser optical ring pulse radiating from center during breach
+      float ringR = mix(0.10, 0.58, uWarp);
+      float laserPulse = exp(-pow((radDist - ringR) / 0.045, 2.0)) * uWarp * (1.0 - uWarp * 0.45);
+      vec3 warped = acc / wSum + mix(vec3(0.55, 0.92, 1.0), vec3(0.98, 0.18, 0.24), 0.32) * laserPulse * 0.42;
+      centerTex = vec4(warped, 1.0);
+    } else if (uBreach > 0.001) {
+      // Crisp, restrained vertical chromatic parallax as the 12 cm concrete slab sweeps past the lens
+      float caY = 0.0045 * uBreach;
+      centerTex = vec4(
+        texture2D(tScene, clamp(sampleUv + vec2(0.0, caY), vec2(0.001), vec2(0.999))).r,
+        texture2D(tScene, sampleUv).g,
+        texture2D(tScene, clamp(sampleUv - vec2(0.0, caY), vec2(0.001), vec2(0.999))).b,
+        1.0
+      );
+    }
+    // S8: the CD's centre hole is marked in the studio render with alpha 0.75; there the hero
+    // layers are drawn as on the first screen (hw: how much hero this pixel gets)
+    float holeA = texture2D(tScene, vUv).a;
+    float inHole = step(0.001, uPortal) * (1.0 - step(0.08, abs(holeA - 0.75)));
+    float hw = max(uHero, inHole);
+    // ...the whole frame, shrunk into the small hole far away, 1:1 by the time it fills the screen
+    vec2 hUv = vUv;
+    vec2 hSnap = snappedUv;
+    if (inHole > 0.5) {
+      hUv = 0.5 + (vUv - uHole.xy) * uHole.z;
+      hSnap = 0.5 + (snappedUv - uHole.xy) * uHole.z;
+    }
+
     vec2 halfRes = vec2(uMediaRes.x, uMediaRes.y * 0.5);
     // media-UV offsets (as authored for the photo) -> screen-UV offsets
     vec2 toScreen = 1.0 / coverScale(uRes, halfRes);
@@ -226,23 +281,23 @@ export const COMPOSITE_FRAG = /* glsl */ `
     // --- mouse trail ---
     vec2 vel = vec2(0.0);
     float energy = 0.0;
-    if (uHero > 0.5) {
-      vec4 trail = texture2D(tTrail, vUv);
-      vel = (trail.rg - ZERO) * 2.0 * uTrailAmt;
-      energy = clamp(trail.b, 0.0, 1.0) * uTrailAmt;
+    if (hw > 0.001) {
+      vec4 trail = texture2D(tTrail, hUv);
+      vel = (trail.rg - ZERO) * 2.0 * uTrailAmt * hw;
+      energy = clamp(trail.b, 0.0, 1.0) * uTrailAmt * hw;
     }
     vec2 smudgeOffset = -vel * (0.11 * energy + 0.04 * energy * energy);
     float revealMask = smoothstep(0.06, 0.58, energy);
 
-    float emptyMix = uHero > 0.5 ? smoothstep(0.005, 0.08, tr) : 1.0;
-    float parallaxDamp = (1.0 - smoothstep(0.04, 0.38, tr)) * uHero;
+    float emptyMix = mix(1.0, smoothstep(0.005, 0.08, tr), hw);
+    float parallaxDamp = (1.0 - smoothstep(0.04, 0.38, tr)) * hw;
     vec2 roomParallax = uParallax * 0.008 * parallaxDamp;
     vec2 textParallax = uParallax * 0.022 * parallaxDamp;
     vec2 fgParallax   = -uParallax * 0.012 * parallaxDamp;
 
     // === LAYER 1: THE ROOM (always the same pipeline, start to end) ===
     vec2 dof = vec2(0.0026, 0.0026 * aspect) * toScreen;
-    vec2 bgUv = snappedUv + roomParallax + smudgeOffset * 0.45;
+    vec2 bgUv = hSnap + roomParallax + smudgeOffset * 0.45;
     vec3 soft =
       room(bgUv, emptyMix, halfRes) * 0.36 +
       room(bgUv + vec2(dof.x, dof.y), emptyMix, halfRes) * 0.16 +
@@ -252,11 +307,11 @@ export const COMPOSITE_FRAG = /* glsl */ `
     vec3 dithered = applyDigitalDither(soft, cellCoord, 0.0);
     // alpha < 1 marks pixels that must show raw colour (the hovered cover)
     vec3 raw = min(centerTex.rgb, vec3(1.0));
-    vec3 col = mix(raw, dithered, step(0.5, centerTex.a) * (1.0 - uClean));
+    vec3 col = mix(raw, dithered, max(step(0.5, centerTex.a) * (1.0 - uClean), inHole));
 
     // mouse smear reveals the raw, chromatic room under the cursor
     if (revealMask > 0.001) {
-      vec2 rawUv = vUv + roomParallax + smudgeOffset;
+      vec2 rawUv = hUv + roomParallax + smudgeOffset;
       vec2 dir = vel * 0.08 * energy * toScreen;
       vec2 chroma = (length(vel) > 0.001 ? normalize(vel) : vec2(1.0, 0.0)) * (0.010 * energy) * toScreen;
       vec3 smeared = vec3(0.0);
@@ -277,9 +332,9 @@ export const COMPOSITE_FRAG = /* glsl */ `
     float textShadow = 0.0;
     vec3 textCol = vec3(0.0);
     float textBehind = 1.0 - uTextFront;
-    float textVis = uHero * uTextReveal * (1.0 - smoothstep(0.03, 0.30, tr));
+    float textVis = hw * uTextReveal * (1.0 - smoothstep(0.03, 0.30, tr));
     if (textVis > 0.001) {
-      vec2 textUv = clamp(vUv + textParallax + smudgeOffset * 0.9, vec2(0.0), vec2(1.0));
+      vec2 textUv = clamp(hUv + textParallax + smudgeOffset * 0.9, vec2(0.0), vec2(1.0));
       vec2 dofText = vec2(0.0018, 0.0018 * aspect);
       vec2 textChroma = (length(vel) > 0.001 ? normalize(vel) : vec2(1.0, 0.0)) * (0.009 * energy);
       float tSoft = (
@@ -305,10 +360,10 @@ export const COMPOSITE_FRAG = /* glsl */ `
 
     // === LAYER 3: CUTOUT YOUNG MULTI -> SHATTERS INTO THE DUST, NEVER REAPPEARS ===
     float burnGlow = 0.0;
-    if (uHero > 0.5 && tr <= 0.44) {
+    if (hw > 0.001 && tr <= 0.44) {
       float fgZoom = 1.0 + smoothstep(0.0, 0.45, tr) * 0.12;
-      vec2 fgUv = (vUv - 0.5) / fgZoom + 0.5;
-      vec2 fgSnappedUv = (snappedUv - 0.5) / fgZoom + 0.5;
+      vec2 fgUv = (hUv - 0.5) / fgZoom + 0.5;
+      vec2 fgSnappedUv = (hSnap - 0.5) / fgZoom + 0.5;
       vec2 fgRawUv = coverUv(fgUv + fgParallax + smudgeOffset * 0.72, uRes, halfRes);
       vec2 fgDitherUv = coverUv(fgSnappedUv + fgParallax + smudgeOffset * 0.35, uRes, halfRes);
 
@@ -355,10 +410,12 @@ export const COMPOSITE_FRAG = /* glsl */ `
         vec3 multiCol = mix(fgDither, fgSmeared, revealMask);
         float silhouetteEdge = fgAlpha * (1.0 - fgAlpha) * 4.0;
         multiCol += vec3(0.28, 0.45, 0.52) * silhouetteEdge * textMask * 0.35 * textBehind;
-        col = mix(col, multiCol, fgAlpha);
+        col = mix(col, multiCol, fgAlpha * hw);
       }
     }
     col += vec3(0.68, 0.92, 1.0) * burnGlow * 1.15;
+    // S8: the window fades in out of the black hole as the portal ignites
+    col *= 1.0 - inHole * (1.0 - clamp(uPortal, 0.0, 1.0));
 
     // Portrait: typography composited ON TOP of Multi
     if (uTextFront > 0.5 && textVis > 0.001) {
@@ -367,26 +424,91 @@ export const COMPOSITE_FRAG = /* glsl */ `
     }
 
     // === GLOW: HDR overflow (grout light, settled dust, light through the hole) ===
+    // Suppressed cleanly inside the bright Alabaster B-Side Showroom so whites stay razor-crisp
     vec3 over = max(centerTex.rgb - 1.0, 0.0);
-    if (uGlowTaps > 0.5) {
+    if (uGlowTaps > 0.5 && uInvert < 0.98) {
       vec2 px = 1.0 / uRes;
       for (int i = 0; i < 8; i++) {
         float a = float(i) * 0.785398;
         vec2 o = vec2(cos(a), sin(a));
-        over += max(texture2D(tScene, vUv + o * px * 9.0 * uDpr).rgb - 1.0, 0.0) * 0.32;
-        over += max(texture2D(tScene, vUv + o * px * 22.0 * uDpr).rgb - 1.0, 0.0) * 0.16;
+        over += max(texture2D(tScene, sampleUv + o * px * 9.0 * uDpr).rgb - 1.0, 0.0) * 0.32;
+        over += max(texture2D(tScene, sampleUv + o * px * 22.0 * uDpr).rgb - 1.0, 0.0) * 0.16;
       }
     }
-    col += over * vec3(0.72, 0.92, 1.0) * 0.55;
+    col += over * mix(vec3(0.72, 0.92, 1.0), vec3(0.95, 0.97, 0.98), uInvert) * 0.55 * (1.0 - uInvert * 0.65);
 
     // === FILM: scanlines, cursor rim, grain, vignette ===
-    float scan = 0.97 + 0.03 * sin(gl_FragCoord.y * 1.4);
+    // In B-Side Alabaster Showroom (uInvert -> 1), switch to crisp photographic editorial finish
+    float scanRaw = 0.97 + 0.03 * sin(gl_FragCoord.y * 1.4);
+    float scan = mix(scanRaw, 1.0, uInvert * 0.92);
     float rim = smoothstep(0.04, 0.20, energy) * (1.0 - smoothstep(0.22, 0.55, energy));
-    col = col * scan + vec3(0.32, 0.52, 0.58) * rim * 0.20;
-    float grain = (hash(gl_FragCoord.xy + fract(uTime * 31.7)) - 0.5) * 0.022;
+    col = col * scan + vec3(0.32, 0.52, 0.58) * rim * 0.20 * (1.0 - uInvert);
+    float grainAmt = mix(0.022, 0.013, uInvert);
+    float grain = (hash(gl_FragCoord.xy + fract(uTime * 31.7)) - 0.5) * grainAmt;
     float vig = 1.0 - smoothstep(0.45, 1.28, length((vUv - 0.5) * vec2(1.15, 1.05)));
-    col = col * mix(0.76, 1.0, vig) + grain;
+    col = col * mix(mix(0.76, 0.93, uInvert), 1.0, vig) + grain;
     col *= 1.0 - uBlack;
+
+    // === S8 REWIND: a VHS picture in search mode. A noise bar rolls up the frame, a few
+    // scanlines tear into white streaks; still the moment the scroll (the tape) stops ===
+    if (uRewind > 0.002) {
+      float barY = fract(vUv.y * 0.85 - uTime * 0.55);
+      float bar = smoothstep(0.0, 0.05, barY) * (1.0 - smoothstep(0.05, 0.11, barY));
+      float lineId = floor(gl_FragCoord.y / max(2.0, 2.0 * uDpr));
+      float snow = hash(vec2(floor(gl_FragCoord.x / 3.0), lineId + floor(uTime * 40.0)));
+      float streak = step(0.985, hash(vec2(lineId, floor(uTime * 24.0)))) * smoothstep(0.2, 1.0, hash(vec2(lineId * 1.7, floor(uTime * 24.0) + 3.0)));
+      vec3 noiseCol = vec3(0.62, 0.74, 0.80) * snow;
+      col = mix(col, noiseCol, bar * 0.6 * uRewind);
+      col += vec3(0.55, 0.68, 0.74) * streak * snow * 0.55 * uRewind;
+      col *= 1.0 - 0.12 * uRewind * step(0.5, fract(lineId * 0.5)); // interlace
+    }
+
+    // === 3D OPTICAL CRYSTAL GLASS MAGNIFYING LOUPE (Dark Lost Media clinical optics, S7) ===
+    // Smooth spherical convex magnification (1.85x) + prismatic RGB dispersion + icy teal-silver glass rim
+    if (uLoupe.z > 0.004) {
+      vec2 lDelta = vUv - uLoupe.xy;
+      vec2 lMetric = vec2(lDelta.x * aspect, lDelta.y);
+      float lDist = length(lMetric);
+      float R = uLoupe.w * mix(0.62, 1.0, uLoupe.z);
+
+      // Subtle dark glass rim shadow
+      float shDist = length(lMetric - vec2(0.007, -0.012));
+      float dropSh = smoothstep(R * 1.28, R * 0.88, shDist) * smoothstep(R * 0.96, R * 1.04, lDist);
+      col *= 1.0 - dropSh * 0.35 * uLoupe.z;
+
+      if (lDist < R * 1.02) {
+        float rn = clamp(lDist / max(R, 0.0001), 0.0, 1.0);
+        float inside = 1.0 - smoothstep(0.965, 1.0, rn);
+        float zCurve = sqrt(max(1.0 - rn * rn, 0.0));
+        float magScale = mix(0.54, 0.88, pow(rn, 2.2));
+        vec2 magUv = uLoupe.xy + lDelta * magScale;
+        vec2 rDir = lDelta / max(length(lDelta), 0.0004);
+        float disp = (0.002 + 0.011 * pow(rn, 2.6)) * uLoupe.z;
+        vec3 lensRgb = vec3(
+          texture2D(tScene, clamp(magUv + rDir * disp, vec2(0.001), vec2(0.999))).r,
+          texture2D(tScene, clamp(magUv, vec2(0.001), vec2(0.999))).g,
+          texture2D(tScene, clamp(magUv - rDir * disp, vec2(0.001), vec2(0.999))).b
+        );
+        // Micro-sharpening + subtle optical clarity lift inside lens (reveals fine print & tracklist!)
+        vec2 px = 1.0 / uRes;
+        vec3 blurL = (
+          texture2D(tScene, clamp(magUv + vec2(px.x, 0.0) * 1.35, vec2(0.001), vec2(0.999))).rgb +
+          texture2D(tScene, clamp(magUv - vec2(px.x, 0.0) * 1.35, vec2(0.001), vec2(0.999))).rgb +
+          texture2D(tScene, clamp(magUv + vec2(0.0, px.y) * 1.35, vec2(0.001), vec2(0.999))).rgb +
+          texture2D(tScene, clamp(magUv - vec2(0.0, px.y) * 1.35, vec2(0.001), vec2(0.999))).rgb
+        ) * 0.25;
+        lensRgb = clamp((lensRgb + (lensRgb - blurL) * 0.55) * 1.08, 0.0, 1.0);
+
+        vec3 glassN = normalize(vec3(lMetric / max(R, 0.0001), max(zCurve, 0.08)));
+        float fres = pow(1.0 - max(glassN.z, 0.0), 3.2);
+        vec3 Lspec = normalize(vec3(-0.45, 0.65, 0.62));
+        float crescent = pow(max(dot(glassN, Lspec), 0.0), 42.0) * 0.48;
+        float rimBevel = exp(-pow((rn - 0.96) / 0.030, 2.0));
+        lensRgb += vec3(0.75, 0.94, 1.0) * (crescent + fres * 0.28 + rimBevel * 0.52);
+
+        col = mix(col, lensRgb, inside * uLoupe.z);
+      }
+    }
 
     // flying dust sits on top of everything (premultiplied)
     if (uDustOn > 0.5) {

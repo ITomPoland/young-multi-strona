@@ -18,7 +18,8 @@ export const STORY_CHAPTERS = [
   { id: 'turn', vh: 140 }, // S4: speed ramp, through the hole, 180° -> the room seen from behind
   { id: 'albums', vh: 350, anchor: 'dyskografia', anchorAt: 0.2 }, // S5: 4 albums + LOST MEDIA (it ends on LOST MEDIA)
   { id: 'reveal', vh: 330, anchor: 'o-mnie', anchorAt: 0.36 }, // S6: sunglasses reflection -> Multi's head -> "o mnie"
-  { id: 'merch', vh: 415, anchor: 'merch', anchorAt: 0.18 } // S7: YFL -> solid LOST MEDIA Box -> Exploded View -> Selected Goods
+  { id: 'merch', vh: 460, anchor: 'merch', anchorAt: 0.48 }, // S7: DVD Box reveal + hold + Hidden Track #21 CD VFX exit
+  { id: 'echo', vh: 190, anchor: 'kontakt', anchorAt: 0.3 } // S8: through the CD hole into the hero frame -> contact (VCR menu) -> it turns into YOUNG MULTI -> the page loops
 ];
 
 // Key moments (absolute story-vh)
@@ -210,43 +211,53 @@ export const REVEAL = (() => {
   return { switch: a + 4, pull: [a + 14, a + 88], scan: [a + 80, a + 116], hold: [a + 116, b - 14], end: b };
 })();
 
-// S7: SELECTED GOODS. YFL particles pour DIRECTLY into the LOST MEDIA Collector's Box
-// (zero detour back to head = brisk, punchy scroll!), reverse laser turns it solid,
-// slipcase opens into 3D Exploded View, then smoothly scrolls through the 4 archival drops.
-export const MERCH_COUNT = 4; // 0: LOST MEDIA BOX, 1: STEALTH ERA TEE, 2: PATCH HOODIE, 3: EMBOSSED HOODIE
+// S7: LOST MEDIA CD (DVD BOX REVEAL) — THE FLOOR ITSELF IS THE DVD BOX!
+//  ONE single uninterrupted cinematic spline (zero stop/brake between flip and pull-back!):
+//   - Camera drops past the 36 cm black DVD edge rolling 180°, glides seamlessly over the giant
+//     front cover, and pulls smoothly back in one breath onto the centered 3D LOST MEDIA DVD Box!
 export const MERCH = (() => {
   const [a, b] = CHAPTER_RANGES.merch;
-  const firstItemVh = a + 76;
-  const itemStepVh = 68;
-  const lastItemVh = firstItemVh + (MERCH_COUNT - 1) * itemStepVh;
   return {
     start: a,
-    morphToBox: [a - 28, a - 2], // YFL logo -> LOST MEDIA Box (uMorph: 3 -> 4)
-    materialize: [a - 4, a + 26], // reverse turquoise laser sweeps UP: particles -> solid box
-    explode: [a + 28, a + 66], // 3D exploded view: slipcase shifts, iridescent disc slides out
-    firstItemVh,
-    itemStepVh,
-    uiIn: [a + 18, a + 38],
-    uiOut: [lastItemVh + 32, lastItemVh + 48],
-    black: [lastItemVh + 38, lastItemVh + 68],
-    end: b,
-    // Focus cursor 0..3 with subtle linger on each product (same feel as the album tower)
-    focus(vh) {
-      if (vh <= firstItemVh) return 0;
-      const u = (vh - firstItemVh) / itemStepVh;
-      const clamped = Math.min(u, MERCH_COUNT - 1);
-      const i = Math.floor(clamped);
-      if (i >= MERCH_COUNT - 1) return MERCH_COUNT - 1;
-      return i + linger(clamped - i);
-    },
-    vhForItem(idx) {
-      return firstItemVh + idx * itemStepVh;
-    }
+    journey: [a - 22, a + 193], // ONE continuous 215vh spline: edge-flip -> close over cover -> grand pullback
+    plunge: [a - 22, a + 58], // reference beat for ABOUT.out handoff
+    uiIn: [a + 166, a + 196], // Awwwards HUD & floating command dock glide in on arrival
+    uiOut: [a + 282, a + 306], // Merch HUD & dock gracefully retract as CD VFX exit begins
+    cdExit: [a + 295, b], // S7->S8 VFX: case opens -> CD ejects & spins up -> optical laser scan -> warp through center hole
+    portal: [b - 58, b - 4], // Synchronized aperture iris reveal of Contact directly out of the spinning CD center hole
+    black: [b + 20, b + 40], // No black fade between S7 & Contact — the CD center hole IS the live portal!
+    end: b
   };
 })();
 
+// S8 ECHO (contact): the CD's centre hole is a window onto the hero frame: Multi standing in
+// the first room. The camera lands in it, the contact comes up as the VCR's menu over that
+// frame, then the menu scrambles into the YOUNG MULTI type. That frame IS story-vh 0, so
+// from `loop` on the world plays S1 again and at `wrap` the page jumps back by `loop` to the
+// very same frame: an endless tape. Absolute story-vh.
+export const ECHO = (() => {
+  const [a, b] = CHAPTER_RANGES.echo;
+  const loop = a + 150;
+  return {
+    start: a,
+    open: [MERCH.cdExit[0] + 40, a - 30], // the hole turns into the window (portal ignition)
+    menu: [a + 6, a + 34], // the VCR menu (contact) types in
+    morph: [a + 96, a + 140], // ...and scrambles into YOUNG MULTI
+    loop, // this frame == story-vh 0
+    wrap: loop + 28, // past here: jump back by `loop` (same frame)
+    end: b
+  };
+})();
+
+// World-vh for a story-vh: the room / hero follow the scroll up to the CD exit; from then on
+// they hold the hero frame (vh 0), and past `loop` they play S1 again.
+export function echoWorldVh(vh) {
+  if (vh < MERCH.cdExit[0]) return vh;
+  return Math.max(0, vh - ECHO.loop);
+}
+
 // "O MNIE" (S6 hold): the scan's read-out. Absolute story-vh.
-// ABOUT.morph(vh): 0 head, 1 pad, 2 vinyl, 3 YFL logo, 4 LOST MEDIA box (direct from YFL!).
+// ABOUT.morph(vh): 0 head, 1 pad, 2 vinyl, 3 YFL logo (stays YFL as camera dives into floor portal!).
 export const ABOUT = (() => {
   const h = REVEAL.hold[0];
   const chapters = [
@@ -255,13 +266,13 @@ export const ABOUT = (() => {
     [h + 110, h + 160]
   ];
   const stats = [h + 156, h + 176];
-  // 0->1 pad, 1->2 vinyl, 2->3 YFL logo, 3->4 LOST MEDIA box
-  const steps = [...chapters.map((c) => c[0]).map((v) => [v - 7, v + 11]), MERCH.morphToBox];
+  // 0->1 pad, 1->2 vinyl, 2->3 YFL logo
+  const steps = chapters.map((c) => c[0]).map((v) => [v - 7, v + 11]);
   return {
     intro: [h - 12, h + 8], // "scan complete", the name decodes
     chapters,
     stats,
-    out: [MERCH.morphToBox[0] - 4, MERCH.morphToBox[0] + 10], // "o mnie" HUD leaves as YFL pours into Box
+    out: [MERCH.plunge[0] - 4, MERCH.plunge[0] + 14], // "o mnie" HUD leaves as floor portal ignites
     morph(vh) {
       let m = 0;
       steps.forEach(([a, b]) => {

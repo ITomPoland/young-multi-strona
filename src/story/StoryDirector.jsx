@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock, albumFocus, ALBUM_SPACING, ALBUM_RISE, ORBIT_START_VH, whipEase, spinCarry, towerPull, REVEAL, MERCH } from './story.config';
+import { CHAPTER_RANGES, BEATS, chapterProgress, heroTr, crackFront, burstClock, albumFocus, ALBUM_SPACING, ALBUM_RISE, ORBIT_START_VH, whipEase, spinCarry, towerPull, REVEAL, MERCH, ECHO, echoWorldVh } from './story.config';
 import { PHOTO, TOWER } from './world/calibration';
 import { REST_SIZE, heroTileAt } from './storyThree';
 
@@ -77,23 +77,29 @@ export default function StoryDirector({ storyVh, state }) {
 
   useFrame((frame, dt) => {
     const s = state.current;
-    const vh = storyVh.get();
+    // two clocks: the real scroll (studio, merch, the echo) and the WORLD's (the room, the hero,
+    // the tower). They are the same until the CD exit; then the world shows the first room
+    // through the CD hole and rewinds it (story.config: echoWorldVh).
+    const vhReal = storyVh.get();
+    const vh = echoWorldVh(vhReal);
     // scroll velocity (vh / s), smoothed: drives the secondary motion out at the tower
     const dts = Math.min(Math.max(dt, 1 / 240), 0.1);
     // a stalled frame (a hitch: the scroll ran on meanwhile) is not a burst of speed: it would
-    // flash the speed effects (wider lens, glitching covers) for nothing
-    const stalled = dt > 0.1;
-    const rawVel = s.vh === undefined || stalled ? s.vel ?? 0 : THREE.MathUtils.clamp((vh - s.vh) / dts, -600, 600);
+    // flash the speed effects (wider lens, glitching covers) for nothing. Nor is the world's
+    // clock jumping back to the first room at the CD exit.
+    const stalled = dt > 0.1 || (s.wvh !== undefined && Math.abs(vh - s.wvh) > 40);
+    const rawVel = s.wvh === undefined || stalled ? s.vel ?? 0 : THREE.MathUtils.clamp((vh - s.wvh) / dts, -600, 600);
     s.vel = (s.vel ?? 0) + (rawVel - (s.vel ?? 0)) * (1 - Math.exp(-dts * 7));
-    s.vh = vh;
+    s.wvh = vh;
+    s.vh = vhReal;
     const time = frame.clock.elapsedTime;
     const aspect = size.width / Math.max(size.height, 1);
     const B = BEATS.burst;
     const CAUGHT = BEATS.caught;
     const [turnStart] = CHAPTER_RANGES.turn;
 
-    // one canvas from the hero to the end of the story (S0..S7)
-    s.active = vh <= MERCH.end + 2;
+    // one canvas from the hero to the last frame (the echo ends on the hero frame again)
+    s.active = true;
     s.tr = heroTr(vh);
     const d = chapterProgress('turn', vh);
     s.single = chapterProgress('single', vh);
@@ -103,6 +109,8 @@ export default function StoryDirector({ storyVh, state }) {
     s.albumFocus = albumFocus(vh);
     s.ring = vh > turnStart ? 1 : 0;
     s.clean = smooth(ORBIT_START_VH + 12, ORBIT_START_VH + 80, vh);
+    // S8: the hero type is down while the VCR menu is up, and rises as the menu scrambles into it
+    s.echoText = vhReal >= MERCH.cdExit[0] && vhReal < ECHO.loop ? 1 - smooth(ECHO.morph[0] + 12, ECHO.morph[1], vhReal) : 0;
 
     // --- charge: ONE crack front, from the first settled dust straight into the burst ---
     s.crack = crackFront(vh) / 12;
@@ -247,22 +255,43 @@ export default function StoryDirector({ storyVh, state }) {
     // ...and gives it back (scrolling up) only once the studio camera has really come back
     // onto the glass: it follows the scroll on a spring, so it lags; handing back while it is
     // still out would cut from the head straight to the tower
-    s.studioOn = vh >= REVEAL.switch || (s.studioOn && (s.studioU ?? 0) > 0.0015);
-    s.revBulge = smooth(REVEAL.switch, REVEAL.pull[0] + 16, vh); // the picture turns into glass
-    const pullT = clamp01((vh - REVEAL.pull[0]) / (REVEAL.pull[1] - REVEAL.pull[0]));
+    // S8: and hands it back to the world for good once the camera is inside the CD hole (the
+    // hole then fills the screen with that same world). Again only once the studio camera,
+    // which lags on its spring, has really arrived there.
+    const landed = vhReal >= ECHO.start && (!s.studioOn || (s.studioExit ?? 0) > 0.992);
+    s.studioOn = !landed && (vhReal >= REVEAL.switch || (s.studioOn && (s.studioU ?? 0) > 0.0015));
+    s.revBulge = smooth(REVEAL.switch, REVEAL.pull[0] + 16, vhReal); // the picture turns into glass
+    const pullT = clamp01((vhReal - REVEAL.pull[0]) / (REVEAL.pull[1] - REVEAL.pull[0]));
     // from rest (no kick), fastest a third of the way, then a long brake: 1 - (1-t)^3 (1+3t)
     s.revPull = 1 - Math.pow(1 - pullT, 3) * (1 + 3 * pullT);
-    s.revScan = smooth(REVEAL.scan[0], REVEAL.scan[1], vh);
-    s.revHold = smooth(REVEAL.hold[0] - 10, REVEAL.hold[0] + 10, vh);
+    s.revScan = smooth(REVEAL.scan[0], REVEAL.scan[1], vhReal);
+    s.revHold = smooth(REVEAL.hold[0] - 10, REVEAL.hold[0] + 10, vhReal);
+    // the CD hole opens onto the first room
+    s.portal = smooth(ECHO.open[0], ECHO.open[1], vhReal);
+    // S8: the studio keeps its clean look round the hole (the hole itself is the dithered hero);
+    // once we have landed the hero frame is the world's, dithered as on the first screen
+    if (vhReal >= MERCH.cdExit[0] && vhReal < ECHO.loop) s.clean = s.studioOn ? 1 : 0;
+    // the menu turning into the type: VHS search noise, only while the scroll (the tape) moves
+    const inMorph = smooth(ECHO.morph[0] - 2, ECHO.morph[0] + 10, vhReal) * (1 - smooth(ECHO.morph[1] - 14, ECHO.morph[1] - 2, vhReal));
+    s.rewind = inMorph * clamp01(Math.abs(storyVh.getVelocity()) / 70);
 
-    // --- S7: Selected Goods (YFL -> solid LOST MEDIA Collector's Box -> exploded view -> 4 archival drops) ---
-    s.boxMorph = smooth(MERCH.morphToBox[0], MERCH.morphToBox[1], vh);
-    s.boxScan = smooth(MERCH.materialize[0], MERCH.materialize[1], vh);
-    s.boxExplode = smooth(MERCH.explode[0], MERCH.explode[1], vh);
-    s.merchFocus = MERCH.focus(vh);
+    // --- S7: LOST MEDIA CD (ONE continuous cinematic journey: 180° edge-flip -> cover glide -> centered pullback!) ---
+    const rawJ = clamp01((vhReal - MERCH.journey[0]) / (MERCH.journey[1] - MERCH.journey[0]));
+    // Single smooth velocity curve: gentle departure, peak continuous speed across the flip & cover glide (ZERO pause!),
+    // then a long silky settle onto the centered 3D DVD Box.
+    const journey = rawJ * rawJ * (3 - 2 * rawJ);
+    s.dvdJourney = journey;
+    s.plunge = clamp01(journey / 0.48);
+    const breachT = clamp01((journey - 0.08) / 0.28);
+    s.breach = Math.sin(breachT * Math.PI);
+    s.dvdPull = clamp01((journey - 0.48) / 0.52);
 
-    // black at the very end of S7, seamlessly handing off to Contact's dark ink circle
-    s.black = smooth(MERCH.black[0], MERCH.black[1], vh);
+    // --- S7 -> S8: HIDDEN TRACK #21 (CD eject -> optical laser scan -> warp through CD center hole -> Contact!) ---
+    const rawExit = clamp01((vhReal - MERCH.cdExit[0]) / (MERCH.cdExit[1] - MERCH.cdExit[0]));
+    s.cdExit = rawExit * rawExit * (3 - 2 * rawExit);
+    // Keep iconic dark Lost Media film grade all the way through S7!
+    s.bside = 0;
+    s.black = 0;
 
     // --- the tile's print burns in while it tumbles toward us ---
     const e = easeOutCubic(clamp01((vh - (B + 3)) / (CAUGHT - (B + 3))));

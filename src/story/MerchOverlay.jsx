@@ -1,115 +1,198 @@
 import React, { useState } from 'react';
-import { motion, useMotionValueEvent, useTransform } from 'framer-motion';
-import { MERCH, MERCH_COUNT } from './story.config';
-import { storyVhToScroll } from './useStoryScroll';
-import { MERCH_ITEMS } from '../data/merch';
+import { motion, useTransform } from 'framer-motion';
+import { MERCH } from './story.config';
+import { LOST_MEDIA_PRODUCT } from '../data/merch';
 
 // =====================================================================
-// S7: SELECTED GOODS — Dark Lost Media archival DOM overlay
-// Mirrors AboutOverlay & AlbumsOverlay's surgical typography and layout:
-//  - Top bar: SELECTED GOODS · YFL ARCHIVE + 01 / 04
-//  - Left column: active item's clinical code, status, title, price, note, shop CTA
-//  - Right HUD (wide screens): interactive 4-item index (clicking jumps straight to item)
-// Everything is scrubbed by scroll (reversible) and stays 100% clickable & accessible.
+// S7: LOST MEDIA CD (DVD BOX) — Awwwards Spatial 3D Artifact Stage
+// Zero generic "left product / right sidebar" split!
+//  - Center stage: the physical 3D LOST MEDIA DVD Box stands dead center
+//    with full-viewport 360° drag & central 3D optical magnifying loupe.
+//  - Perimeter HUD: lightweight asymmetrical editorial flanks (left: title
+//    & clinical specs, right: live view telemetry, price & full-drop link)
+//    + subtle 1px clinical viewfinder corner brackets.
+//  - Bottom center: floating glassmorphic Command Dock (3D Flip / Open +
+//    primary pre-order CTA) keeping the 3D stage completely uncluttered.
 // =====================================================================
 
-export default function MerchOverlay({ storyVh }) {
+export default function MerchOverlay({ storyVh, state }) {
   const rootOpacity = useTransform(
     storyVh,
     [MERCH.uiIn[0], MERCH.uiIn[1], MERCH.uiOut[0], MERCH.uiOut[1]],
     [0, 1, 1, 0]
   );
-  const pointerEvents = useTransform(storyVh, (v) =>
+  const interactive = useTransform(storyVh, (v) =>
     v > MERCH.uiIn[0] + 4 && v < MERCH.uiOut[1] - 2 ? 'auto' : 'none'
   );
+  const dockY = useTransform(storyVh, [MERCH.uiIn[0], MERCH.uiIn[1]], [28, 0]);
+  const flankX = useTransform(storyVh, [MERCH.uiIn[0], MERCH.uiIn[1]], [18, 0]);
+  const flankNegX = useTransform(storyVh, [MERCH.uiIn[0], MERCH.uiIn[1]], [-18, 0]);
+  // Brief cinematic laser-read telemetry HUD while the ejected CD spins up before Contact iris opens
+  const trackHudOpacity = useTransform(
+    storyVh,
+    [MERCH.cdExit[0] + 18, MERCH.cdExit[0] + 44, MERCH.portal[0] - 8, MERCH.portal[0] + 12],
+    [0, 1, 1, 0]
+  );
+  const trackHudY = useTransform(
+    storyVh,
+    [MERCH.cdExit[0] + 18, MERCH.cdExit[0] + 44],
+    [16, 0]
+  );
 
-  const [active, setActive] = useState(0);
-  useMotionValueEvent(storyVh, 'change', (v) => {
-    const idx = Math.min(Math.max(Math.round(MERCH.focus(v)), 0), MERCH_COUNT - 1);
-    setActive((prev) => (prev === idx ? prev : idx));
-  });
+  const [flipped, setFlipped] = useState(false);
+  const [opened, setOpened] = useState(false);
 
-  const item = MERCH_ITEMS[active] ?? MERCH_ITEMS[0];
-
-  const jumpTo = (idx) => {
-    window.scrollTo({ top: storyVhToScroll(MERCH.vhForItem(idx)), behavior: 'smooth' });
+  const toggleFlip = () => {
+    setFlipped((prev) => {
+      const next = !prev;
+      if (state?.current) {
+        state.current.dvdFlip = next ? 1 : 0;
+        if (next) {
+          state.current.dvdOpen = 0;
+          setOpened(false);
+        }
+      }
+      return next;
+    });
   };
 
-  return (
-    <motion.section
-      className="story-merch"
-      style={{ opacity: rootOpacity, pointerEvents }}
-      aria-labelledby="merch-heading"
-    >
-      <h2 id="merch-heading" className="story-sr-only">
-        Selected Goods — Young Family Label
-      </h2>
+  const toggleOpen = () => {
+    setOpened((prev) => {
+      const next = !prev;
+      if (state?.current) {
+        state.current.dvdOpen = next ? 1 : 0;
+        if (next) {
+          state.current.dvdFlip = 0;
+          setFlipped(false);
+        }
+      }
+      return next;
+    });
+  };
 
-      {/* Top archival header */}
+  const p = LOST_MEDIA_PRODUCT;
+  const viewMode = opened
+    ? 'WIDOK // 03 · PŁYTA + BOOKLET'
+    : flipped
+      ? 'WIDOK // 02 · TYŁ · TRACKLISTA'
+      : 'WIDOK // 01 · OKŁADKA DVD';
+
+  return (
+    <>
+      <motion.section
+        className="story-merch"
+        style={{ opacity: rootOpacity }}
+        aria-labelledby="merch-heading"
+      >
+      {/* Subtle 1px clinical viewfinder brackets framing the centered 3D artifact */}
+      <div className="story-merch-frame" aria-hidden="true">
+        <span className="story-merch-corner is-tl" />
+        <span className="story-merch-corner is-tr" />
+        <span className="story-merch-corner is-bl" />
+        <span className="story-merch-corner is-br" />
+      </div>
+
+      {/* Top perimeter telemetry bar */}
       <header className="story-merch-head">
-        <span>SELECTED GOODS · YFL ARCHIVE</span>
-        <span className="story-merch-count">
-          {String(active + 1).padStart(2, '0')} / {String(MERCH_COUNT).padStart(2, '0')}
-        </span>
+        <span>{p.code}</span>
+        <span className="story-merch-hint">PRZECIĄGNIJ 360° · LUPA OPTYCZNA</span>
+        <span className="story-merch-count">DVD BOX · CD</span>
       </header>
 
-      {/* Left editorial details for the focused 3D item */}
-      <div className="story-merch-info" key={item.id}>
+      {/* Left editorial flank — open typography, zero card clutter */}
+      <motion.div className="story-merch-flank story-merch-left" style={{ x: flankNegX }}>
         <div className="story-merch-kicker-row">
-          <span className="story-merch-code">{item.code}</span>
-          <span className={`story-merch-badge${item.statusType === 'live' ? ' is-live' : ''}`}>
-            {item.status}
-          </span>
+          <span className="story-merch-dot" aria-hidden="true" />
+          <span className="story-merch-kicker">{p.kicker}</span>
         </div>
+        <h2 id="merch-heading" className="story-merch-title">
+          {p.title}
+        </h2>
+        <span className="story-merch-edition">{p.edition}</span>
+        <ul className="story-merch-specs">
+          {p.specs.map((spec) => (
+            <li key={spec}>{spec}</li>
+          ))}
+        </ul>
+      </motion.div>
 
-        <span className="story-merch-cat">{item.category}</span>
-        <h3 className="story-merch-title">{item.name}</h3>
-        <p className="story-merch-price">{item.price}</p>
-        <p className="story-merch-note">{item.note}</p>
+      {/* Right telemetry flank — balanced price, live 3D inspection state & full drop link */}
+      <motion.div className="story-merch-flank story-merch-right" style={{ x: flankX }}>
+        <span className="story-merch-viewmode">{viewMode}</span>
+        <p className="story-merch-price">{p.price}</p>
+        <span className="story-merch-tax">Z VAT · DOSTAWA GRUDZIEŃ 2026</span>
+        <motion.a
+          className="story-merch-secondary"
+          style={{ pointerEvents: interactive }}
+          href={p.secondaryLink}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span>{p.secondaryCta}</span>
+          <span aria-hidden="true">↗</span>
+        </motion.a>
+      </motion.div>
+
+      {/* Compact mobile meta bar sitting cleanly above the dock */}
+      <div className="story-merch-mobile-meta">
+        <div>
+          <span className="story-merch-mobile-kicker">{p.kicker}</span>
+          <span className="story-merch-mobile-title">{p.title}</span>
+        </div>
+        <span className="story-merch-mobile-price">{p.price}</span>
+      </div>
+
+      {/* Bottom-center Awwwards Floating Command Dock */}
+      <motion.nav
+        className="story-merch-dock"
+        style={{ y: dockY, pointerEvents: interactive }}
+        aria-label="Sterowanie modelem 3D i zamówienie płyty"
+      >
+        <button
+          type="button"
+          className={`story-merch-dock-btn${flipped ? ' is-on' : ''}`}
+          onClick={toggleFlip}
+        >
+          <span aria-hidden="true">↻</span>
+          <span>{flipped ? 'PRZÓD' : 'TYŁ 180°'}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`story-merch-dock-btn${opened ? ' is-on' : ''}`}
+          onClick={toggleOpen}
+        >
+          <span aria-hidden="true">{opened ? '×' : '+'}</span>
+          <span>{opened ? 'ZAMKNIJ' : 'OTWÓRZ'}</span>
+        </button>
+
+        <span className="story-merch-dock-sep" aria-hidden="true" />
 
         <a
-          className="story-merch-cta"
-          href={item.link}
+          className="story-merch-dock-cta"
+          href={p.link}
           target="_blank"
           rel="noopener noreferrer"
         >
           <span className="story-merch-cta-line" aria-hidden="true" />
-          <span>{item.cta}</span>
+          <span>ZAMÓW · {p.price}</span>
           <span aria-hidden="true">↗</span>
         </a>
-      </div>
-
-      {/* Right interactive index (wide screens) */}
-      <aside className="story-merch-hud" aria-label="Produkty Selected Goods">
-        <div className="about-hud-head">
-          <span>ARCHIWUM DROPÓW</span>
-          <span className="about-hud-count">YFL</span>
-        </div>
-        <ol className="about-hud-list">
-          {MERCH_ITEMS.map((it, i) => (
-            <li key={it.id}>
-              <button
-                type="button"
-                className={`story-merch-hud-btn${i === active ? ' is-on' : ''}${i < active ? ' is-past' : ''}`}
-                onClick={() => jumpTo(i)}
-              >
-                <span className="about-hud-index">{it.index}</span>
-                <span className="about-hud-bar" />
-                <span className="story-merch-hud-name">{it.name}</span>
-              </button>
-            </li>
-          ))}
-        </ol>
-        <a
-          className="story-merch-store"
-          href="https://sklep.yfl.pl"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <span>PEŁNY SKLEP YFL</span>
-          <span aria-hidden="true">↗</span>
-        </a>
-      </aside>
+      </motion.nav>
     </motion.section>
+
+    {/* Cinematic optical-drive readout during S7 -> S8 Hidden Track #21 CD laser breach */}
+    <motion.div
+      className="story-cd-readout"
+      style={{ opacity: trackHudOpacity, y: trackHudY }}
+      aria-hidden="true"
+    >
+      <div className="story-cd-readout-row">
+        <span className="story-merch-dot" />
+        <span>OPTICAL LASER LOCK // TRACK 21</span>
+      </div>
+      <span className="story-cd-readout-sub">DECODING HIDDEN CHANNEL · YFL HQ</span>
+    </motion.div>
+    </>
   );
 }

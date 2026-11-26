@@ -18,7 +18,6 @@ import { useStoryVh, storyVhToScroll } from './story/useStoryScroll';
 import { anchorVh } from './story/story.config';
 
 // Lazy-loaded components - load when needed (below the fold)
-const Contact = lazy(() => import('./components/Contact/Contact'));
 const NotFound = lazy(() => import('./components/NotFound/NotFound'));
 
 import { PerformanceProvider } from './context/PerformanceContext';
@@ -54,7 +53,6 @@ function HomePage() {
   // === SECTION REFS FOR DYNAMIC NAVIGATION ===
   const heroRef = useRef(null);
   const storyRef = useRef(null);
-  const contactRef = useRef(null);
 
   const openMenu = useCallback(() => setIsMenuOpen(true), []);
   const closeMenu = useCallback(() => setIsMenuOpen(false), []);
@@ -69,9 +67,9 @@ function HomePage() {
       return;
     }
 
-    // KONTAKT scrolls to very bottom of page
+    // KONTAKT: the VCR menu at the end of the story (the page loops on past it)
     if (sectionId === 'kontakt') {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' });
+      window.scrollTo({ top: storyVhToScroll(anchorVh('kontakt')), behavior: 'auto' });
       setTimeout(() => setIsMenuOpen(false), 300);
       return;
     }
@@ -107,7 +105,6 @@ function HomePage() {
   React.useEffect(() => {
     // Code Splitting Preload
     import('./story/StoryCanvas');
-    import('./components/Contact/Contact');
   }, []);
 
   const handlePreloaderComplete = useCallback(() => {
@@ -147,9 +144,6 @@ function HomePage() {
         <main>
           <Hero ref={heroRef} />
           <StorySection ref={storyRef} storyVh={storyVh} startAnimation={!isLoading} />
-          <Suspense fallback={null}>
-            <Contact ref={contactRef} />
-          </Suspense>
         </main>
       </>
     </>
