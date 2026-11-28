@@ -186,6 +186,7 @@ export const COMPOSITE_FRAG = /* glsl */ `
   uniform float uInvert;    // 0 = dark film grade, 1 = infinite alabaster B-Side Construct grade
   uniform vec4 uLoupe;      // xy = smoothed cursor UV (0..1), z = active strength (0..1), w = radius (screen-H units)
   uniform float uRewind;    // S8: the contact turning into the type: VHS search noise
+  uniform float uNoFilm;    // S8: 1 = render the plain hero frame (for the TV), no film / loupe
   uniform float uPortal;    // S8: the CD hole (studio pixels with alpha 0.75) shows the hero frame
   uniform vec3 uHole;       // S8: hole centre (screen UV) + zoom-out of the hero frame inside it (1 = 1:1)
   varying vec2 vUv;
@@ -436,6 +437,12 @@ export const COMPOSITE_FRAG = /* glsl */ `
       }
     }
     col += over * mix(vec3(0.72, 0.92, 1.0), vec3(0.95, 0.97, 0.98), uInvert) * 0.55 * (1.0 - uInvert * 0.65);
+
+    // S8: the hero frame for the TV's glass gets no film here (the screen pass adds it once)
+    if (uNoFilm > 0.5) {
+      gl_FragColor = vec4(col, 1.0);
+      return;
+    }
 
     // === FILM: scanlines, cursor rim, grain, vignette ===
     // In B-Side Alabaster Showroom (uInvert -> 1), switch to crisp photographic editorial finish

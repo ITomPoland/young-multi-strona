@@ -9,6 +9,7 @@ import HeroTile from './world/HeroTile';
 import Motes from './world/Motes';
 import Tower from './world/Tower';
 import Studio from './studio/Studio';
+import TvRoom from './tv/TvRoom';
 import { ensureThreeState } from './storyThree';
 import { markStoryReady } from './storyReady';
 
@@ -40,6 +41,7 @@ function World({ state }) {
       <Motes state={state} />
       <Tower state={state} />
       <Studio state={state} />
+      <TvRoom state={state} />
     </>
   );
 }

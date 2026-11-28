@@ -56,3 +56,8 @@ export function shiftScroll(dy) {
     window.scrollTo({ top: window.scrollY + dy, behavior: 'auto' });
   }
 }
+
+// true while something holds the page still (the album scene's tracklist)
+export function isScrollLocked() {
+  return locks > 0;
+}

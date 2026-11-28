@@ -863,6 +863,11 @@ export default function Studio({ state }) {
     if (!s.studioOn || !headGroup.current) {
       wasOn.current = false;
       s.studioU = 0;
+      // (while the studio sleeps its shared, sprung values follow the scroll, so nothing that
+      // reads them on the first frame back (the box, the showroom, the atrium) sees a stale
+      // pose from the last pass, e.g. after the page has looped)
+      s.studioJourney = s.dvdJourney ?? 0;
+      s.studioExit = s.cdExit ?? 0;
       return;
     }
     const cam = studio.camera;

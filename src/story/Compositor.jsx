@@ -145,12 +145,20 @@ export default function Compositor({ state, glow = true }) {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter
     });
-    return { sceneRT, dustRT, trailA, trailB, trailInit, worldRT };
+    // S8: the hero frame, for the TV's last channel (composited like the first screen)
+    const heroRT = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.UnsignedByteType,
+      depthBuffer: false,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter
+    });
+    return { sceneRT, dustRT, trailA, trailB, trailInit, worldRT, heroRT };
   }, []);
 
   // the studio's lens samples this
   useEffect(() => {
     state.current.worldTex = targets.worldRT.texture;
+    state.current.heroTex = targets.heroRT.texture;
   }, [state, targets]);
 
   // ---------- media: stacked video (Multi + matte), poster, typography ----------
@@ -222,6 +230,7 @@ export default function Compositor({ state, glow = true }) {
         uLoupe: { value: new THREE.Vector4(0.5, 0.5, 0, 0.125) },
         uRewind: { value: 0 },
         uPortal: { value: 0 },
+        uNoFilm: { value: 0 },
         uHole: { value: new THREE.Vector3(0.5, 0.5, 1) }
       }
     });
@@ -359,6 +368,7 @@ export default function Compositor({ state, glow = true }) {
       targets.trailB.dispose();
       targets.trailInit.dispose();
       targets.worldRT.dispose();
+      targets.heroRT.dispose();
       passes.trailMat.dispose();
       passes.compMat.dispose();
       passes.dustOverlay.material.dispose();
@@ -388,8 +398,9 @@ export default function Compositor({ state, glow = true }) {
       targets.sceneRT.setSize(buf.x, buf.y);
       targets.dustRT.setSize(buf.x, buf.y);
       targets.worldRT.setSize(buf.x, buf.y);
+      targets.heroRT.setSize(buf.x, buf.y);
       // allocated now, not on their first use (the dust's first scroll, the reveal)
-      for (const rt of [targets.dustRT, targets.worldRT]) {
+      for (const rt of [targets.dustRT, targets.worldRT, targets.heroRT]) {
         gl.setRenderTarget(rt);
         gl.clear(true, true, true);
       }
@@ -400,7 +411,10 @@ export default function Compositor({ state, glow = true }) {
     const studio = s.studioOn && s.studio;
     // the hero layers belong to the world on screen: not while the studio has the screen (the
     // CD exit already shows the first room, but only through the hole)
-    const heroOn = tr < 0.5 && !studio;
+    // S8: the TV room has the screen from its seam to the landing
+    const tvMode = s.tvOn && s.tv;
+    const chan = s.tvChan ?? 0;
+    const heroOn = tr < 0.5 && !studio && !tvMode;
     // S8: ...except inside the CD's centre hole, which shows the live hero frame
     const portal = studio && tr < 0.5 ? s.portal ?? 0 : 0;
     const time = frame.clock.elapsedTime;
@@ -439,7 +453,7 @@ export default function Compositor({ state, glow = true }) {
 
     // --- 1. trail ---
     const ts = trailState.current;
-    if (heroOn || portal > 0) {
+    if (heroOn || portal > 0 || (tvMode && chan > 1)) {
       if (!ts.write) ts.write = targets.trailA;
       const tu = passes.trailMat.uniforms;
       tu.u_prevTrail.value = ts.read ? ts.read.texture : targets.trailInit;
@@ -485,8 +499,51 @@ export default function Compositor({ state, glow = true }) {
       gl.setRenderTarget(targets.worldRT);
       gl.clear(true, true, true);
     }
-    // once the world has faded out of the glass, it is not drawn at all
-    if (!studio || (s.lensWorld ?? 1) > 0.001) {
+    if (tvMode) {
+      // S8: channel 0 = the studio's frame, channel 2 = the hero frame: both into textures that
+      // the TV's glass shows; the TV room is what is on the screen
+      if (studio && chan < 0.5) {
+        gl.setRenderTarget(targets.worldRT);
+        gl.setClearColor(0x000000, 1);
+        gl.clear(true, true, true);
+        gl.render(s.studio.scene, s.studio.camera);
+      }
+      if (chan > 1.5) {
+        const hu = passes.compMat.uniforms;
+        hu.tScene.value = media.fallback;
+        hu.uRes.value.copy(buf);
+        hu.uDpr.value = dpr;
+        hu.uTime.value = time;
+        hu.uBlack.value = 0;
+        hu.uGlowTaps.value = 0;
+        hu.uTr.value = tr;
+        hu.uHero.value = 1;
+        hu.uTrailAmt.value = 1 - THREE.MathUtils.smoothstep(tr, 0.42, 0.5);
+        hu.tTrail.value = ts.read ? ts.read.texture : targets.trailInit;
+        hu.tVideo.value = mediaTex;
+        hu.uParallax.value.set(p.parallaxX, p.parallaxY);
+        hu.uTextReveal.value = textReveal.current * (1 - textHide.current);
+        hu.uTextFront.value = isTextFront(size.width, size.height) ? 1 : 0;
+        hu.uDustOn.value = 0;
+        hu.uClean.value = 0;
+        hu.uBreach.value = 0;
+        hu.uWarp.value = 0;
+        hu.uInvert.value = 0;
+        hu.uRewind.value = 0;
+        hu.uPortal.value = 0;
+        hu.uLoupe.value.z = 0;
+        hu.uNoFilm.value = 1;
+        gl.setRenderTarget(targets.heroRT);
+        gl.render(passes.compScene, passes.orthoCam);
+        hu.uNoFilm.value = 0;
+        hu.tScene.value = targets.sceneRT.texture;
+      }
+      gl.setRenderTarget(targets.sceneRT);
+      gl.setClearColor(0x000000, 1);
+      gl.clear(true, true, true);
+      gl.render(s.tv.scene, s.tv.camera);
+    } else if (!studio || (s.lensWorld ?? 1) > 0.001) {
+      // (once the world has faded out of the glass, it is not drawn at all)
       gl.setRenderTarget(studio ? targets.worldRT : targets.sceneRT);
       gl.setClearColor(0x000000, 1);
       gl.clear(true, true, true);
@@ -509,7 +566,7 @@ export default function Compositor({ state, glow = true }) {
         camera.projectionMatrixInverse.copy(_proj).invert();
       }
     }
-    if (studio) {
+    if (studio && !tvMode) {
       gl.setRenderTarget(targets.sceneRT);
       gl.clear(true, true, true);
       gl.render(s.studio.scene, s.studio.camera);
@@ -553,6 +610,8 @@ export default function Compositor({ state, glow = true }) {
     const wide = size.width / Math.max(size.height, 1) > 1.05;
     const inStage =
       !s.touch &&
+      studio &&
+      !tvMode &&
       (s.studioJourney ?? s.dvdJourney ?? 0) > 0.78 &&
       (s.studioExit ?? s.cdExit ?? 0) < 0.04 &&
       (s.black ?? 0) < 0.25 &&

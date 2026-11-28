@@ -1,219 +1,251 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { motion, useMotionValueEvent, useTransform } from 'framer-motion';
 import { ECHO } from './story.config';
-import { jumpTo, shiftScroll } from '../lib/scrollLock';
+import { isScrollLocked, shiftScroll } from '../lib/scrollLock';
 import { storyVhToScroll } from './useStoryScroll';
+import { TTX_ACTIONS, tvBarrel } from './tv/teletext';
 import './EchoOverlay.css';
 
 // =====================================================================
-// S8: KONTAKT. The CD's centre hole was a window onto the hero frame: the camera lands in it
-// and Multi is standing there. The contact comes up as the VCR's on-screen menu; scrolling on,
-// the tape rewinds and the menu scrambles into the YOUNG MULTI type. That frame is the first
-// frame of the site, so the page loops: past ECHO.wrap it jumps back to the same frame and the
-// film plays again (endless tape). PLAY does the same jump on demand.
+// S8: KONTAKT on the TV's teletext page (P100). The page itself is drawn into the CRT's glass
+// (tv/TvRoom + tv/teletext); this layer only makes it usable: the pointer is mapped onto the
+// glass (its corners on screen: state.tvGlass) and through the same fisheye as the shader
+// (state.tvK) to a teletext cell, so hover and clicks land on the right line on any screen.
+// A plain list carries the same contact for keyboards and screen readers. And the page loops:
+// past ECHO.wrap it jumps back by ECHO.loop to the very same frame (an endless tape).
 // =====================================================================
 
-const CHANNELS = [
-  { id: 'booking', label: 'BOOKING · KONCERTY', value: 'BOOKING@YFL.PL', copy: 'booking@yfl.pl' },
-  { id: 'biznes', label: 'BIZNES · WSPÓŁPRACE', value: 'BIZNES@YFL.PL', copy: 'biznes@yfl.pl' },
-  { id: 'ig', label: 'INSTAGRAM', value: '@YOUNGMULTI', href: 'https://www.instagram.com/youngmulti/' },
-  { id: 'yt', label: 'YOUTUBE', value: 'YOUNG MULTI', href: 'https://www.youtube.com/channel/UCiP6-9NHJ36BCxUWL-gNKYg' },
-  { id: 'sp', label: 'SPOTIFY', value: 'YOUNG MULTI', href: 'https://open.spotify.com/artist/5CkZIA3WpaEFxp0wSjMzRI' },
-  { id: 'shop', label: 'SKLEP', value: 'SKLEP.YFL.PL', href: 'https://sklep.yfl.pl/' },
-  { id: 'play', label: 'PLAY', value: 'OD POCZĄTKU', play: true }
-];
-
-// the tape counter: the whole story is "track 21", 0:21:21 long; the morph rewinds it to 0:00:00
-const TAPE_SECONDS = 21 * 60 + 21;
-const fmt = (sec) => {
-  const t = Math.max(0, Math.round(sec));
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  const s = t % 60;
-  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+const LABELS = {
+  booking: 'Booking i koncerty: booking@yfl.pl (kopiuj)',
+  biznes: 'Biznes i współprace: biznes@yfl.pl (kopiuj)',
+  ig: 'Instagram',
+  yt: 'YouTube',
+  sp: 'Spotify',
+  shop: 'Sklep YFL'
 };
 
-const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
-const smooth = (a, b, v) => {
-  const t = clamp01((v - a) / (b - a));
-  return t * t * (3 - 2 * t);
-};
-
-// The menu turning into the type: letter by letter the OSD text breaks into the letters of
-// YOUNG MULTI and tape blocks. Deterministic per (row, letter, step): scrubbing back un-breaks it.
-const GLYPHS = 'YOUNGMULTIYOUNGMULTI█▓▒░';
-const hash = (a, b) => {
-  const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
-  return x - Math.floor(x);
-};
-function scramble(text, row, p, step) {
-  if (p <= 0) return text;
-  let out = '';
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === ' ' || hash(row, i) > p * 1.35) {
-      out += ch;
-      continue;
-    }
-    out += GLYPHS[Math.floor(hash(row * 7 + i, step) * GLYPHS.length)];
+// screen point -> (u, v) on the glass (0..1, v up), inverse of the bilinear corner patch
+function glassUv(x, y, q) {
+  const [x00, y00, x10, y10, x01, y01, x11, y11] = q;
+  let u = 0.5;
+  let v = 0.5;
+  for (let i = 0; i < 8; i++) {
+    const px = (1 - u) * (1 - v) * x00 + u * (1 - v) * x10 + (1 - u) * v * x01 + u * v * x11;
+    const py = (1 - u) * (1 - v) * y00 + u * (1 - v) * y10 + (1 - u) * v * y01 + u * v * y11;
+    const dxu = (1 - v) * (x10 - x00) + v * (x11 - x01);
+    const dyu = (1 - v) * (y10 - y00) + v * (y11 - y01);
+    const dxv = (1 - u) * (x01 - x00) + u * (x11 - x10);
+    const dyv = (1 - u) * (y01 - y00) + u * (y11 - y10);
+    const det = dxu * dyv - dxv * dyu;
+    if (Math.abs(det) < 1e-6) break;
+    const ex = x - px;
+    const ey = y - py;
+    u += (ex * dyv - ey * dxv) / det;
+    v += (dxu * ey - dyu * ex) / det;
   }
-  return out;
+  return [u, v];
 }
 
-export default function EchoOverlay({ storyVh }) {
-  const [m0, m1] = ECHO.menu;
-  const [g0, g1] = ECHO.morph;
-
-  // in with the menu, out as it breaks into the type (gone well before the loop frame)
-  const hudOpacity = useTransform(storyVh, [m0 - 4, m0 + 4, g1 - 16, g1 - 4], [0, 1, 1, 0]);
-  const menuOpacity = useTransform(storyVh, [m0, m0 + 6, g0 + 18, g1 - 6], [0, 1, 1, 0]);
-  const menuX = useTransform(storyVh, [g0, g1], [0, -24]);
-  const creditsOpacity = useTransform(storyVh, [m1 - 6, m1 + 2, g0, g0 + 16], [0, 1, 1, 0]);
-  const interactive = useTransform(storyVh, (v) => (v > m0 + 4 && v < g0 + 10 ? 'auto' : 'none'));
-
-  const counterRef = useRef(null);
-  const [mode, setMode] = useState('stop'); // stop | rew
-  const [lines, setLines] = useState(0); // menu lines typed in so far
-  const [mp, setMp] = useState(0); // morph progress, quantised (0..40)
-  const [sel, setSel] = useState(0);
-  const [copied, setCopied] = useState(null);
-  const listRef = useRef(null);
-  const wrapping = useRef(false);
-
-  const update = useCallback(
-    (v) => {
-      // the endless tape: past the wrap point, the same frame sits `loop` higher up the page
-      if (v >= ECHO.wrap && !wrapping.current) {
-        wrapping.current = true;
-        shiftScroll(-storyVhToScroll(ECHO.loop));
-        requestAnimationFrame(() => (wrapping.current = false));
-        return;
-      }
-      const p = smooth(g0, g1 - 8, v);
-      if (counterRef.current) counterRef.current.textContent = fmt((1 - p) * TAPE_SECONDS);
-      const next = v > g0 + 2 ? 'rew' : 'stop';
-      setMode((o) => (o === next ? o : next));
-      const q = Math.round(p * 40);
-      setMp((o) => (o === q ? o : q));
-      // the menu is typed line by line as you scroll in (and un-typed going back)
-      const n = Math.max(0, Math.min(CHANNELS.length + 1, Math.floor(((v - m0) / (m1 - m0)) * (CHANNELS.length + 1) + 0.6)));
-      setLines((o) => (o === n ? o : n));
-    },
-    [m0, m1, g0, g1]
-  );
-  useMotionValueEvent(storyVh, 'change', update);
-  useEffect(() => update(storyVh.get()), [storyVh, update]);
-
-  const activate = useCallback(async (c) => {
-    if (c.play) {
-      jumpTo(0);
-      return;
+// copy to the clipboard: the async API, else the old execCommand route (some browsers / iframes
+// refuse the first); false only if both fail
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
     }
-    if (c.copy) {
-      try {
-        await navigator.clipboard.writeText(c.copy);
-        setCopied(c.id);
-        setTimeout(() => setCopied((o) => (o === c.id ? null : o)), 2200);
-      } catch {
-        window.location.href = `mailto:${c.copy}`;
-      }
+  }
+}
+
+export default function EchoOverlay({ storyVh, state }) {
+  const [h0, h1] = ECHO.hold;
+  const active = useTransform(storyVh, (v) => (v > h0 - 4 && v < h1 + 2 ? 'auto' : 'none'));
+  const layerRef = useRef(null);
+  const wrapping = useRef(false);
+  const copyTimer = useRef(0);
+
+  // the endless tape: past the wrap point, the same frame sits `loop` higher up the page
+  const onScroll = useCallback((v) => {
+    if (v >= ECHO.wrap && !wrapping.current) {
+      wrapping.current = true;
+      shiftScroll(-storyVhToScroll(ECHO.loop));
+      requestAnimationFrame(() => (wrapping.current = false));
     }
   }, []);
+  useMotionValueEvent(storyVh, 'change', onScroll);
 
-  // a real VCR menu: arrows move the cursor, Enter picks (only while focus is in the menu)
-  const onKeyDown = (e) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const next = (sel + (e.key === 'ArrowDown' ? 1 : -1) + CHANNELS.length) % CHANNELS.length;
-    setSel(next);
-    listRef.current?.querySelectorAll('.echo-item')[next]?.focus();
+  // ...and the other way round: at the very top (the hero), scrolling up jumps forward by
+  // `loop` to the very same frame at the end of the page and carries on backwards into the TV
+  // (so the contact is one short scroll up from the start). Wheel, touch and the arrow keys;
+  // not while the preloader runs or something holds the page.
+  useEffect(() => {
+    const atTop = () => window.scrollY <= 2;
+    const ready = () => Boolean(state?.current?.heroStart) && !isScrollLocked();
+    let lastWrap = 0;
+    const wrapUp = () => {
+      const now = performance.now();
+      if (now - lastWrap < 600) return;
+      lastWrap = now;
+      shiftScroll(storyVhToScroll(ECHO.loop));
+    };
+    const onWheel = (e) => {
+      if (e.deltaY < 0 && atTop() && ready()) wrapUp();
+    };
+    let touchY = null;
+    const onTouchStart = (e) => {
+      touchY = e.touches?.[0]?.clientY ?? null;
+    };
+    const onTouchMove = (e) => {
+      const y = e.touches?.[0]?.clientY;
+      if (touchY == null || y == null) return;
+      // finger moving down at the top = trying to scroll up past the start
+      if (y - touchY > 24 && atTop() && ready()) {
+        touchY = y;
+        wrapUp();
+      }
+    };
+    const onKey = (e) => {
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if ((e.key === 'ArrowUp' || e.key === 'PageUp') && atTop() && ready()) wrapUp();
+    };
+    window.addEventListener('wheel', onWheel, { passive: true });
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [state]);
+
+  const actionAt = useCallback(
+    (e) => {
+      const s = state?.current;
+      if (!s?.tvGlass || !s.ttxHit || Math.abs((s.tvChan ?? 0) - 1) > 0.05) return null;
+      const rect = layerRef.current?.getBoundingClientRect();
+      const [u, v] = glassUv(e.clientX - (rect?.left ?? 0), e.clientY - (rect?.top ?? 0), s.tvGlass);
+      if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+      const [gu, gv] = tvBarrel(u, v, s.tvK ?? 0);
+      if (gu < 0 || gu > 1 || gv < 0 || gv > 1) return null;
+      return s.ttxHit(gu, 1 - gv);
+    },
+    [state]
+  );
+
+  const run = useCallback(
+    async (id) => {
+      const a = TTX_ACTIONS[id];
+      const s = state?.current;
+      if (!a) return;
+      if (a.href) {
+        window.open(a.href, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      if (await copyText(a.copy)) {
+        if (s?.ttx) s.ttx.copied = id;
+        clearTimeout(copyTimer.current);
+        copyTimer.current = setTimeout(() => {
+          if (s?.ttx?.copied === id) s.ttx.copied = null;
+        }, 2200);
+      } else {
+        window.location.href = `mailto:${a.copy}`;
+      }
+    },
+    [state]
+  );
+
+  // the hover is re-checked every frame (the picture can move under a still pointer)
+  const lastPt = useRef(null);
+  const setHover = useCallback(
+    (pt) => {
+      const id = pt ? actionAt(pt) : null;
+      const s = state?.current;
+      if (s?.ttx && s.ttx.hover !== id) s.ttx.hover = id;
+      const el = layerRef.current;
+      if (el) {
+        el.style.cursor = id ? 'pointer' : '';
+        el.classList.toggle('interactive', Boolean(id));
+      }
+    },
+    [actionAt, state]
+  );
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const v = storyVh.get();
+      if (lastPt.current && v > h0 - 4 && v < h1 + 2) setHover(lastPt.current);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [storyVh, h0, h1, setHover]);
+
+  const onMove = (e) => {
+    lastPt.current = { clientX: e.clientX, clientY: e.clientY };
+    const id = actionAt(e);
+    const s = state?.current;
+    if (s?.ttx) s.ttx.hover = id;
+    const el = layerRef.current;
+    if (el) {
+      el.style.cursor = id ? 'pointer' : '';
+      el.classList.toggle('interactive', Boolean(id)); // (the site's custom cursor grows on these)
+    }
+  };
+  const onLeave = () => {
+    lastPt.current = null;
+    const s = state?.current;
+    if (s?.ttx) s.ttx.hover = null;
+    layerRef.current?.classList.remove('interactive');
+  };
+  const onClick = (e) => {
+    const id = actionAt(e);
+    if (id) run(id);
   };
 
-  const p = mp / 40;
-  const step = mp;
-  const year = new Date().getFullYear();
-  // rows tear sideways a little as the tape runs back (VHS tracking)
-  const tear = (row) => (p > 0 ? (hash(row, step) - 0.5) * 2 * Math.min(p * 3, 1) * (1 - p) : 0);
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
 
   return (
-    <div className="echo-overlay">
-      {/* --- VCR status: STOP (end of the tape) / REW + counter --- */}
-      <motion.div className="echo-hud" style={{ opacity: hudOpacity }} aria-hidden="true">
-        <span className={`echo-hud-mode is-${mode}`}>{mode === 'rew' ? '◀◀ REW' : '■ STOP'}</span>
-        <span className="echo-hud-counter">
-          <span className="echo-hud-ctr">CTR</span>
-          <span ref={counterRef}>{fmt(TAPE_SECONDS)}</span>
-        </span>
-      </motion.div>
-
-      {/* --- the menu: the contact --- */}
-      <motion.section
-        className="echo-menu"
-        style={{ opacity: menuOpacity, x: menuX, pointerEvents: interactive }}
-        aria-labelledby="echo-title"
-      >
-        <h2 id="echo-title" className={`echo-title${lines > 0 ? ' is-on' : ''}`} style={{ translate: `${tear(0) * 0.6}em 0` }}>
-          <span className="echo-title-kicker">{scramble('TRACK 21 · HIDDEN TRACK', 1, p, step)}</span>
-          <span aria-label="KONTAKT">{scramble('KONTAKT', 2, p, step)}</span>
-        </h2>
-        <ul className="echo-list" ref={listRef} onKeyDown={onKeyDown}>
-          {CHANNELS.map((c, i) => {
-            const on = lines > i + 1;
-            const isSel = sel === i && p === 0;
-            const row = i + 3;
-            const value = copied === c.id ? 'SKOPIOWANO ✓' : c.value;
-            const inner = (
-              <>
-                <span className="echo-cursor" aria-hidden="true">▶</span>
-                <span className="echo-idx" aria-hidden="true">
-                  {c.play ? '▶▶' : String(i + 1).padStart(2, '0')}
-                </span>
-                <span className="echo-label">{scramble(c.label, row, p, step)}</span>
-                <span className="echo-dots" aria-hidden="true" />
-                <span className="echo-value">
-                  {scramble(value, row + 20, p, step)}
-                  {c.href && <span aria-hidden="true"> ↗</span>}
-                </span>
-              </>
-            );
-            const common = {
-              className: `echo-item${isSel ? ' is-sel' : ''}${c.play ? ' is-play' : ''}${copied === c.id ? ' is-copied' : ''}`,
-              onMouseEnter: () => setSel(i),
-              onFocus: () => setSel(i),
-              tabIndex: on && p === 0 ? 0 : -1
-            };
-            return (
-              <li key={c.id} className={`echo-row${on ? ' is-on' : ''}`} style={{ translate: `${tear(row)}em 0` }}>
-                {c.href ? (
-                  <a {...common} href={c.href} target="_blank" rel="noopener noreferrer" aria-label={`${c.label}: ${c.value} (nowa karta)`}>
-                    {inner}
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    {...common}
-                    onClick={() => activate(c)}
-                    aria-label={c.play ? 'Odtwórz stronę od początku' : `Skopiuj adres ${c.copy}`}
-                  >
-                    {inner}
-                  </button>
-                )}
-              </li>
-            );
-          })}
+    <motion.div
+      ref={layerRef}
+      className="echo-overlay"
+      style={{ pointerEvents: active }}
+      onPointerMove={onMove}
+      onPointerLeave={onLeave}
+      onClick={onClick}
+    >
+      <motion.section className="echo-sr" aria-label="Kontakt" style={{ pointerEvents: active }}>
+        <h2>Kontakt</h2>
+        <ul>
+          {Object.keys(LABELS).map((id) => (
+            <li key={id}>
+              {TTX_ACTIONS[id].href ? (
+                <a href={TTX_ACTIONS[id].href} target="_blank" rel="noopener noreferrer">
+                  {LABELS[id]}
+                </a>
+              ) : (
+                <button type="button" onClick={() => run(id)}>
+                  {LABELS[id]}
+                </button>
+              )}
+            </li>
+          ))}
         </ul>
-        <p className="echo-hint" aria-hidden="true">
-          ▲▼ WYBIERZ · ENTER OK · MAIL = KOPIUJ · SCROLL = OD NOWA
-        </p>
       </motion.section>
-
-      {/* --- the camcorder stamp + credits --- */}
-      <motion.footer className="echo-credits" style={{ opacity: creditsOpacity, pointerEvents: interactive }}>
-        <span className="echo-stamp" aria-hidden="true">
-          SP · LOST MEDIA · 11.12.2026
-        </span>
-        <span>© {year} YOUNG FAMILY LABEL</span>
-      </motion.footer>
-    </div>
+    </motion.div>
   );
 }

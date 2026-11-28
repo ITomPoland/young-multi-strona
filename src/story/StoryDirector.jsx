@@ -110,7 +110,7 @@ export default function StoryDirector({ storyVh, state }) {
     s.ring = vh > turnStart ? 1 : 0;
     s.clean = smooth(ORBIT_START_VH + 12, ORBIT_START_VH + 80, vh);
     // S8: the hero type is down while the VCR menu is up, and rises as the menu scrambles into it
-    s.echoText = vhReal >= MERCH.cdExit[0] && vhReal < ECHO.loop ? 1 - smooth(ECHO.morph[0] + 12, ECHO.morph[1], vhReal) : 0;
+    s.echoText = 0; // (the hero type is on the TV's hero channel already)
 
     // --- charge: ONE crack front, from the first settled dust straight into the burst ---
     s.crack = crackFront(vh) / 12;
@@ -258,22 +258,30 @@ export default function StoryDirector({ storyVh, state }) {
     // S8: and hands it back to the world for good once the camera is inside the CD hole (the
     // hole then fills the screen with that same world). Again only once the studio camera,
     // which lags on its spring, has really arrived there.
-    const landed = vhReal >= ECHO.start && (!s.studioOn || (s.studioExit ?? 0) > 0.992);
-    s.studioOn = !landed && (vhReal >= REVEAL.switch || (s.studioOn && (s.studioU ?? 0) > 0.0015));
+    // S8: the TV. The studio keeps running (its frame is the TV's first channel) until the
+    // channel has switched away from it; the TV scene has the screen from the seam to the
+    // landing, where its glass fills the screen with the hero frame.
+    s.tvOn = vhReal >= ECHO.seam && vhReal < ECHO.land;
+    s.tvPull = smooth(ECHO.pull[0], ECHO.pull[1], vhReal);
+    s.tvChan = smooth(ECHO.chan1[0], ECHO.chan1[1], vhReal) + smooth(ECHO.chan2[0], ECHO.chan2[1], vhReal);
+    s.tvDive = smooth(ECHO.dive[0], ECHO.dive[1], vhReal);
+    // once teletext is on, the camera leans in so the page is big enough to read on wide screens
+    s.tvRead = smooth(ECHO.hold[0] - 4, ECHO.hold[0] + 24, vhReal);
+    const offStudio = vhReal >= ECHO.seam && s.tvChan >= 0.999;
+    s.studioOn = !offStudio && (vhReal >= REVEAL.switch || (s.studioOn && (s.studioU ?? 0) > 0.0015));
     s.revBulge = smooth(REVEAL.switch, REVEAL.pull[0] + 16, vhReal); // the picture turns into glass
     const pullT = clamp01((vhReal - REVEAL.pull[0]) / (REVEAL.pull[1] - REVEAL.pull[0]));
     // from rest (no kick), fastest a third of the way, then a long brake: 1 - (1-t)^3 (1+3t)
     s.revPull = 1 - Math.pow(1 - pullT, 3) * (1 + 3 * pullT);
     s.revScan = smooth(REVEAL.scan[0], REVEAL.scan[1], vhReal);
     s.revHold = smooth(REVEAL.hold[0] - 10, REVEAL.hold[0] + 10, vhReal);
-    // the CD hole opens onto the first room
-    s.portal = smooth(ECHO.open[0], ECHO.open[1], vhReal);
+    s.portal = 0;
     // S8: the studio keeps its clean look round the hole (the hole itself is the dithered hero);
     // once we have landed the hero frame is the world's, dithered as on the first screen
-    if (vhReal >= MERCH.cdExit[0] && vhReal < ECHO.loop) s.clean = s.studioOn ? 1 : 0;
-    // the menu turning into the type: VHS search noise, only while the scroll (the tape) moves
-    const inMorph = smooth(ECHO.morph[0] - 2, ECHO.morph[0] + 10, vhReal) * (1 - smooth(ECHO.morph[1] - 14, ECHO.morph[1] - 2, vhReal));
-    s.rewind = inMorph * clamp01(Math.abs(storyVh.getVelocity()) / 70);
+    // the TV room is dithered like the hero (its glass marks its own pixels raw, so the
+    // picture and the teletext stay sharp); after the landing it is the hero itself
+    if (vhReal >= ECHO.seam && vhReal < ECHO.loop) s.clean = 0;
+    s.rewind = 0;
 
     // --- S7: LOST MEDIA CD (ONE continuous cinematic journey: 180° edge-flip -> cover glide -> centered pullback!) ---
     const rawJ = clamp01((vhReal - MERCH.journey[0]) / (MERCH.journey[1] - MERCH.journey[0]));
@@ -287,8 +295,7 @@ export default function StoryDirector({ storyVh, state }) {
     s.dvdPull = clamp01((journey - 0.48) / 0.52);
 
     // --- S7 -> S8: HIDDEN TRACK #21 (CD eject -> optical laser scan -> warp through CD center hole -> Contact!) ---
-    const rawExit = clamp01((vhReal - MERCH.cdExit[0]) / (MERCH.cdExit[1] - MERCH.cdExit[0]));
-    s.cdExit = rawExit * rawExit * (3 - 2 * rawExit);
+    s.cdExit = 0; // (no CD eject any more: the box goes onto the TV, S8)
     // Keep iconic dark Lost Media film grade all the way through S7!
     s.bside = 0;
     s.black = 0;

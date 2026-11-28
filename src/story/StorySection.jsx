@@ -175,7 +175,7 @@ const StorySection = React.forwardRef(function StorySection({ storyVh, startAnim
           {webgl && <MerchOverlay storyVh={storyVh} state={stateRef} />}
 
           {/* === S8: back in the first room, the tape rewinds -> kontakt (VCR menu) === */}
-          <EchoOverlay storyVh={storyVh} />
+          <EchoOverlay storyVh={storyVh} state={stateRef} />
         </div>
       </section>
 

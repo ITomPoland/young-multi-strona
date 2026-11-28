@@ -487,6 +487,7 @@ export default function LostMediaBox({ state }) {
   );
 
   const smoothPose = useRef({ rx: -Math.PI / 2, ry: 0, open: 0, shiftX: 0, spinAngle: 0 });
+  const wasVisible = useRef(false);
 
   useFrame((frame, dt) => {
     const s = state.current;
@@ -497,6 +498,8 @@ export default function LostMediaBox({ state }) {
     const ex = s.studioExit ?? s.cdExit ?? 0;
     const visible = Boolean(s.studioOn && j > 0.004);
     g.visible = visible;
+    const appearing = visible && !wasVisible.current;
+    wasVisible.current = visible;
     if (!visible) return;
 
     const d = Math.min(dt, 0.08);
@@ -529,6 +532,17 @@ export default function LostMediaBox({ state }) {
     const targetRy = baseRy + (Math.sin(time * 0.36) * 0.042 + p.sx * 0.24 + drag.dx) * holdT * exitFadeCtrl;
     const targetShiftX = open * holdT * exitFadeCtrl * 1.15;
 
+    // The pose is smoothed (the pointer sway, the flip / open buttons), but it must never carry
+    // an old pose into a new pass: coming back into view (e.g. after the page has looped, when
+    // the last pose was the box standing at the end of S7) it starts exactly where it belongs,
+    // and while it lies flat under the atrium floor it is locked there (else a stale upright box
+    // would swing down through the "o mnie" room)
+    if (appearing || standT < 0.001) {
+      sp.rx = targetRx;
+      sp.ry = targetRy;
+      sp.shiftX = targetShiftX;
+      if (appearing) sp.open = targetOpen;
+    }
     const k = 1 - Math.exp(-d * 7.0);
     sp.rx += (targetRx - sp.rx) * k;
     sp.ry += (targetRy - sp.ry) * k;

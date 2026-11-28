@@ -19,7 +19,7 @@ export const STORY_CHAPTERS = [
   { id: 'albums', vh: 350, anchor: 'dyskografia', anchorAt: 0.2 }, // S5: 4 albums + LOST MEDIA (it ends on LOST MEDIA)
   { id: 'reveal', vh: 330, anchor: 'o-mnie', anchorAt: 0.36 }, // S6: sunglasses reflection -> Multi's head -> "o mnie"
   { id: 'merch', vh: 460, anchor: 'merch', anchorAt: 0.48 }, // S7: DVD Box reveal + hold + Hidden Track #21 CD VFX exit
-  { id: 'echo', vh: 190, anchor: 'kontakt', anchorAt: 0.3 } // S8: through the CD hole into the hero frame -> contact (VCR menu) -> it turns into YOUNG MULTI -> the page loops
+  { id: 'echo', vh: 230, anchor: 'kontakt', anchorAt: 0.0 } // S8: the box was on an old TV: pull back into the room, teletext = contact, the TV switches to the hero, fly in -> the page loops
 ];
 
 // Key moments (absolute story-vh)
@@ -230,29 +230,34 @@ export const MERCH = (() => {
   };
 })();
 
-// S8 ECHO (contact): the CD's centre hole is a window onto the hero frame: Multi standing in
-// the first room. The camera lands in it, the contact comes up as the VCR's menu over that
-// frame, then the menu scrambles into the YOUNG MULTI type. That frame IS story-vh 0, so
-// from `loop` on the world plays S1 again and at `wrap` the page jumps back by `loop` to the
-// very same frame: an endless tape. Absolute story-vh.
+// S8 ECHO (contact): the LOST MEDIA box with its price was a picture on an old CRT TV.
+// The scroll pulls back from the glass into a dark room (the TV's light on the floor and on
+// the hero's tiles), the TV switches channel to teletext: page P100 KONTAKT. Then it
+// switches to the hero, and the camera flies back into the glass: where it fills the screen
+// it IS the hero frame. That frame is story-vh 0, so from `loop` the world plays S1 again and
+// at `wrap` the page jumps back by `loop` to the very same frame (an endless tape).
+// Absolute story-vh.
 export const ECHO = (() => {
   const [a, b] = CHAPTER_RANGES.echo;
-  const loop = a + 150;
   return {
     start: a,
-    open: [MERCH.cdExit[0] + 40, a - 30], // the hole turns into the window (portal ignition)
-    menu: [a + 6, a + 34], // the VCR menu (contact) types in
-    morph: [a + 96, a + 140], // ...and scrambles into YOUNG MULTI
-    loop, // this frame == story-vh 0
-    wrap: loop + 28, // past here: jump back by `loop` (same frame)
+    seam: MERCH.uiOut[0] + 20, // the screen quietly becomes the TV's glass
+    pull: [MERCH.uiOut[0] + 20, a - 60], // ...and the camera pulls back into the room
+    chan1: [a - 72, a - 50], // the box -> teletext
+    hold: [a - 50, a + 100], // P100 KONTAKT (long: time to read, hover, click)
+    chan2: [a + 95, a + 118], // teletext -> the hero
+    dive: [a + 112, a + 185], // back into the glass
+    land: a + 185, // the glass fills the screen: the world takes over
+    loop: a + 190, // this frame == story-vh 0
+    wrap: a + 218, // past here: jump back by `loop` (same frame)
     end: b
   };
 })();
 
-// World-vh for a story-vh: the room / hero follow the scroll up to the CD exit; from then on
-// they hold the hero frame (vh 0), and past `loop` they play S1 again.
+// World-vh for a story-vh: the room / hero follow the scroll up to the TV; from then on they
+// hold the hero frame (vh 0, it is on the TV's last channel), and past `loop` play S1 again.
 export function echoWorldVh(vh) {
-  if (vh < MERCH.cdExit[0]) return vh;
+  if (vh < ECHO.seam) return vh;
   return Math.max(0, vh - ECHO.loop);
 }
 

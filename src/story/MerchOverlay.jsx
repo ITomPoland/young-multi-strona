@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { motion, useTransform } from 'framer-motion';
-import { MERCH } from './story.config';
+import { motion, useMotionValueEvent, useTransform } from 'framer-motion';
+import { MERCH, ECHO } from './story.config';
 import { LOST_MEDIA_PRODUCT } from '../data/merch';
 
 // =====================================================================
@@ -27,20 +27,20 @@ export default function MerchOverlay({ storyVh, state }) {
   const dockY = useTransform(storyVh, [MERCH.uiIn[0], MERCH.uiIn[1]], [28, 0]);
   const flankX = useTransform(storyVh, [MERCH.uiIn[0], MERCH.uiIn[1]], [18, 0]);
   const flankNegX = useTransform(storyVh, [MERCH.uiIn[0], MERCH.uiIn[1]], [-18, 0]);
-  // Brief cinematic laser-read telemetry HUD while the ejected CD spins up before Contact iris opens
-  const trackHudOpacity = useTransform(
-    storyVh,
-    [MERCH.cdExit[0] + 18, MERCH.cdExit[0] + 44, MERCH.portal[0] - 8, MERCH.portal[0] + 12],
-    [0, 1, 1, 0]
-  );
-  const trackHudY = useTransform(
-    storyVh,
-    [MERCH.cdExit[0] + 18, MERCH.cdExit[0] + 44],
-    [16, 0]
-  );
-
   const [flipped, setFlipped] = useState(false);
   const [opened, setOpened] = useState(false);
+
+  // leaving S7 (either way, or round the loop): the box goes back to its front, closed
+  useMotionValueEvent(storyVh, 'change', (v) => {
+    const away = v < MERCH.uiIn[0] - 20 || v > ECHO.chan1[1]; // (after the TV has switched away from it)
+    if (!away || (!flipped && !opened)) return;
+    setFlipped(false);
+    setOpened(false);
+    if (state?.current) {
+      state.current.dvdFlip = 0;
+      state.current.dvdOpen = 0;
+    }
+  });
 
   const toggleFlip = () => {
     setFlipped((prev) => {
@@ -181,18 +181,6 @@ export default function MerchOverlay({ storyVh, state }) {
       </motion.nav>
     </motion.section>
 
-    {/* Cinematic optical-drive readout during S7 -> S8 Hidden Track #21 CD laser breach */}
-    <motion.div
-      className="story-cd-readout"
-      style={{ opacity: trackHudOpacity, y: trackHudY }}
-      aria-hidden="true"
-    >
-      <div className="story-cd-readout-row">
-        <span className="story-merch-dot" />
-        <span>OPTICAL LASER LOCK // TRACK 21</span>
-      </div>
-      <span className="story-cd-readout-sub">DECODING HIDDEN CHANNEL · YFL HQ</span>
-    </motion.div>
     </>
   );
 }
